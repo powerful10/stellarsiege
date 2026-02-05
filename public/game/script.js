@@ -2303,6 +2303,8 @@ const player = {
   hitCooldown: 0,
 };
 
+const PLAYER_BOUND_PAD = 6;
+
 const ENEMY_TYPES = {
   drone: {
     hp: (wave) => 2 + Math.floor(wave * 0.15),
@@ -2863,8 +2865,9 @@ function updatePlayer(dt) {
 
   player.x += player.vx * dt;
   player.y += player.vy * dt;
-  player.x = clamp(player.x, 34, WORLD.width - 34);
-  player.y = clamp(player.y, 34, WORLD.height - 34);
+  const bound = player.radius + PLAYER_BOUND_PAD;
+  player.x = clamp(player.x, bound, WORLD.width - bound);
+  player.y = clamp(player.y, bound, WORLD.height - bound);
 
   const dx = input.mouseX - player.x;
   const dy = input.mouseY - player.y;
@@ -3085,8 +3088,9 @@ function updateEnemies(dt) {
       // Knock the player away a bit so we don't "stick" inside hitboxes.
       const kx = dx / dist;
       const ky = dy / dist;
-      player.x = clamp(player.x + kx * 22, 34, WORLD.width - 34);
-      player.y = clamp(player.y + ky * 22, 34, WORLD.height - 34);
+      const bound = player.radius + PLAYER_BOUND_PAD;
+      player.x = clamp(player.x + kx * 22, bound, WORLD.width - bound);
+      player.y = clamp(player.y + ky * 22, bound, WORLD.height - bound);
 
       takeDamage(dmg);
       player.hitCooldown = 0.35;
