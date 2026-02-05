@@ -357,6 +357,7 @@ canvas#game {
   scrollbar-color: rgba(64,243,255,0.4) rgba(0,0,0,0.2);
   -webkit-overflow-scrolling: touch;
   touch-action: pan-y;
+  overscroll-behavior: contain;
 }
 
 .sideMenu button {
@@ -562,8 +563,10 @@ canvas#game {
   border-radius: 18px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: 0 25px 60px rgba(0, 0, 0, 0.45);
+  overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   touch-action: pan-y;
+  overscroll-behavior: contain;
 }
 
 .panel--wide {
@@ -786,6 +789,7 @@ canvas#game {
   padding-right: 6px;
   -webkit-overflow-scrolling: touch;
   touch-action: pan-y;
+  overscroll-behavior: contain;
 }
 
 .upgRow {
@@ -868,6 +872,7 @@ canvas#game {
   gap: 6px;
   -webkit-overflow-scrolling: touch;
   touch-action: pan-y;
+  overscroll-behavior: contain;
 }
 
 .lbRow {
@@ -944,8 +949,11 @@ canvas#game {
   display: grid;
   gap: 10px;
   margin-top: 12px;
+  max-height: 60vh;
+  overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   touch-action: pan-y;
+  overscroll-behavior: contain;
 }
 
 .missionRow {
@@ -1125,17 +1133,7 @@ canvas#game {
 @media (pointer: coarse) {
   body {
     overflow: hidden;
-    touch-action: none;
-  }
-
-  .panel,
-  .panel--wide,
-  .sideMenu,
-  .list,
-  .leaderboard,
-  .missionList {
-    overflow: hidden;
-    max-height: 90vh;
+    touch-action: manipulation;
   }
 }
 
