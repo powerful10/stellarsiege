@@ -166,6 +166,12 @@ canvas#game {
   display: block;
 }
 
+@media (pointer: fine) {
+  .touchControls {
+    display: none !important;
+  }
+}
+
 .touchControls__actions {
   position: absolute;
   bottom: 20px;
