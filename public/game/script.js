@@ -154,7 +154,7 @@ const gameRootEl = document.getElementById("gameRoot") || uiEl.parentElement || 
 const canvas = must("game");
 const ctx = canvas.getContext("2d");
 
-const WORLD = { width: 960, height: 600 };
+let WORLD = { width: 960, height: 600 };
 
 const MODE = {
   SURVIVAL: "survival",
@@ -361,6 +361,7 @@ function resizeCanvas() {
   canvas.height = rect.height;
   uiEl.style.width = `${rect.width}px`;
   uiEl.style.height = `${rect.height}px`;
+  WORLD = { width: rect.width, height: rect.height };
 }
 
 window.addEventListener("resize", resizeCanvas);

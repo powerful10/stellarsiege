@@ -18,6 +18,7 @@ html, body {
   margin: 0;
   padding: 0;
   height: 100%;
+  width: 100%;
   background:
     radial-gradient(1200px 800px at 20% -10%, rgba(64, 243, 255, 0.12), transparent 60%),
     radial-gradient(900px 600px at 80% -5%, rgba(255, 122, 217, 0.12), transparent 60%),
@@ -27,17 +28,20 @@ html, body {
 }
 
 body {
-  display: grid;
-  place-items: center;
+  display: block;
   min-height: 100vh;
   overflow-x: hidden;
+  overflow-y: hidden;
 }
 
 .layout {
   display: grid;
-  gap: 10px;
-  place-items: center;
-  padding: 16px 12px 28px;
+  gap: 0;
+  place-items: stretch;
+  padding: 0;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
 }
 
 .adSlot {
@@ -54,17 +58,12 @@ body {
   letter-spacing: 0.05em;
 }
 
-:root {
-  --game-w: min(96vw, calc(96vh / 0.625));
-  --game-h: min(calc(96vw * 0.625), 96vh);
-}
-
 canvas#game {
   width: 100%;
   height: 100%;
-  border-radius: 18px;
-  border: 1px solid rgba(255,255,255,0.08);
-  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255,255,255,0.05) inset;
+  border-radius: 0;
+  border: 0;
+  box-shadow: none;
   background: linear-gradient(180deg, #0b0f1f, #101a36 50%, #0c1026 100%);
 }
 
@@ -536,7 +535,8 @@ canvas#game {
 }
 
 .panel {
-  width: min(720px, 92%);
+  width: min(960px, 92vw);
+  max-height: 90vh;
   text-align: center;
   padding: 24px 28px;
   background: rgba(10, 15, 35, 0.92);
@@ -548,7 +548,8 @@ canvas#game {
 }
 
 .panel--wide {
-  width: min(940px, 94%);
+  width: min(1100px, 96vw);
+  max-height: 90vh;
   text-align: left;
 }
 
@@ -611,7 +612,7 @@ canvas#game {
 .menuGrid {
   display: grid;
   gap: 10px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
 
 .btn, .btnGhost, .menuGrid button, .panel button {
@@ -1095,11 +1096,11 @@ canvas#game {
 
 .gameRoot {
   position: relative;
-  width: var(--game-w);
-  height: var(--game-h);
-  aspect-ratio: 16 / 10;
-  border-radius: 18px;
-  box-shadow: 0 30px 70px rgba(0,0,0,0.4);
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 @media (pointer: coarse) {
