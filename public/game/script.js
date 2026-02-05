@@ -69,6 +69,7 @@ const playCampaignBtn = must("playCampaignBtn");
 const hangarBtn = must("hangarBtn");
 const leaderboardBtn = must("leaderboardBtn");
 const onlineBtn = must("onlineBtn");
+const menuFullscreenBtn = must("menuFullscreenBtn");
 
 // Hangar UI
 const pilotPillEl = must("pilotPill");
@@ -121,6 +122,7 @@ const menuCampaignBtn = must("menuCampaignBtn");
 const menuHangarBtn = must("menuHangarBtn");
 const menuLeaderboardBtn = must("menuLeaderboardBtn");
 const menuOnlineBtn = must("menuOnlineBtn");
+const sideFullscreenBtn = must("sideFullscreenBtn");
 const menuResetBtn = must("menuResetBtn");
 
 // Top-right auth UI
@@ -207,7 +209,6 @@ function updateTouchControlsVisibility() {
 
 function setupFullscreenToggle({ element }) {
   let lastToggleAt = 0;
-  let start = null;
 
   const canToggle = () => {
     const now = Date.now();
@@ -216,60 +217,8 @@ function setupFullscreenToggle({ element }) {
     return true;
   };
 
-  const onTouchStart = (e) => {
-    if (!e.touches || e.touches.length != 2) return;
-    const t0 = e.touches[0];
-    const t1 = e.touches[1];
-    const dx0 = t1.clientX - t0.clientX;
-    const dy0 = t1.clientY - t0.clientY;
-    const dist0 = Math.hypot(dx0, dy0) || 1;
-    start = {
-      t: Date.now(),
-      x: (t0.clientX + t1.clientX) / 2,
-      y: (t0.clientY + t1.clientY) / 2,
-      dist: dist0,
-    };
-  };
-
-  const onTouchMove = (e) => {
-    if (!start) return;
-    if (!e.touches || e.touches.length != 2) return;
-    const t0 = e.touches[0];
-    const t1 = e.touches[1];
-    const x = (t0.clientX + t1.clientX) / 2;
-    const y = (t0.clientY + t1.clientY) / 2;
-    const dx = x - start.x;
-    const dy = y - start.y;
-    const dxp = t1.clientX - t0.clientX;
-    const dyp = t1.clientY - t0.clientY;
-    const dist = Math.hypot(dxp, dyp) || 1;
-    const scale = dist / start.dist;
-    const dt = Date.now() - start.t;
-
-    const isSwipe = dt < 700 && Math.abs(dx) > 140 && Math.abs(dy) < 80;
-    const isPinch = dt < 700 && Math.abs(scale - 1) > 0.22;
-
-    if (isSwipe || isPinch) {
-      start = null;
-      if (!canToggle()) return;
-      toggleFullscreen(element);
-    }
-  };
-
-  const onTouchEnd = () => {
-    start = null;
-  };
-
-  element.addEventListener("touchstart", onTouchStart, { passive: true });
-  element.addEventListener("touchmove", onTouchMove, { passive: true });
-  element.addEventListener("touchend", onTouchEnd, { passive: true });
-  element.addEventListener("touchcancel", onTouchEnd, { passive: true });
-
   return () => {
-    element.removeEventListener("touchstart", onTouchStart);
-    element.removeEventListener("touchmove", onTouchMove);
-    element.removeEventListener("touchend", onTouchEnd);
-    element.removeEventListener("touchcancel", onTouchEnd);
+    void canToggle;
   };
 }
 
@@ -303,6 +252,12 @@ function shouldIgnoreFullscreenHotkey(target) {
   if (tag === "input" || tag === "textarea" || tag === "select") return true;
   if (target.isContentEditable) return true;
   return false;
+}
+
+function setFullscreenButtonLabel() {
+  const label = document.fullscreenElement ? "Exit Fullscreen" : "Fullscreen";
+  if (menuFullscreenBtn) menuFullscreenBtn.textContent = label;
+  if (sideFullscreenBtn) sideFullscreenBtn.textContent = label;
 }
 
 function setState(next) {
@@ -3583,6 +3538,18 @@ updateHud();
 updateRotateOverlay();
 updateTouchControlsVisibility();
 if (!fullscreenCleanup) fullscreenCleanup = setupFullscreenToggle({ element: document.documentElement });
+setFullscreenButtonLabel();
+
+if (menuFullscreenBtn) {
+  menuFullscreenBtn.addEventListener("click", () => toggleFullscreen(document.documentElement));
+}
+if (sideFullscreenBtn) {
+  sideFullscreenBtn.addEventListener("click", () => toggleFullscreen(document.documentElement));
+}
+
+document.addEventListener("fullscreenchange", () => {
+  setFullscreenButtonLabel();
+});
 
 if (!fullscreenKeybound) {
   fullscreenKeybound = true;

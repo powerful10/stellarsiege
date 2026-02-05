@@ -377,6 +377,7 @@ canvas#game {
   flex-wrap: wrap;
   gap: 10px;
   align-items: center;
+  justify-content: space-between;
 }
 
 .hud__item {
@@ -407,7 +408,30 @@ canvas#game {
 }
 
 .hud__item--wide {
-  flex: 1 1 320px;
+  flex: 1 1 100%;
+  order: 10;
+}
+
+.hud__item--credits,
+.hud__item--crystals {
+  padding: 6px 10px;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+
+@media (max-width: 720px) {
+  .hud__row {
+    gap: 6px;
+  }
+
+  .hud__item {
+    padding: 6px 8px;
+    font-size: 11px;
+  }
+
+  .hud__item--wide {
+    font-size: 11px;
+  }
 }
 
 .bars {
@@ -1112,6 +1136,10 @@ body[data-state="run"] .hud__item--crystals {
 }
 
 body[data-state="run"] .topCenterBrand {
+  display: none;
+}
+
+body[data-state="run"] .topRight .balances {
   display: none;
 }
 
