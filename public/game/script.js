@@ -70,6 +70,7 @@ const hangarBtn = must("hangarBtn");
 const leaderboardBtn = must("leaderboardBtn");
 const onlineBtn = must("onlineBtn");
 const menuFullscreenBtn = must("menuFullscreenBtn");
+const infoBtn = must("infoBtn");
 
 // Hangar UI
 const pilotPillEl = must("pilotPill");
@@ -112,6 +113,9 @@ const gameoverSubEl = must("gameoverSub");
 const restartBtn = must("restartBtn");
 const toMenuBtn = must("toMenuBtn");
 const fsHintEl = must("fsHint");
+const adRewardBoxEl = must("adRewardBox");
+const adRewardTextEl = must("adRewardText");
+const adRewardBtn = must("adRewardBtn");
 
 // Hamburger menu
 const menuBtn = must("menuBtn");
@@ -124,6 +128,7 @@ const menuHangarBtn = must("menuHangarBtn");
 const menuLeaderboardBtn = must("menuLeaderboardBtn");
 const menuOnlineBtn = must("menuOnlineBtn");
 const sideFullscreenBtn = must("sideFullscreenBtn");
+const sideInfoBtn = must("sideInfoBtn");
 const menuResetBtn = must("menuResetBtn");
 
 // Top-right auth UI
@@ -946,10 +951,18 @@ onlineBtn.addEventListener("click", () => {
   setState(STATE.ONLINE);
 });
 
+infoBtn.addEventListener("click", () => {
+  window.location.href = "info.html";
+});
+
 backFromHangarBtn.addEventListener("click", () => setState(STATE.MENU));
 backFromLeaderboardBtn.addEventListener("click", () => setState(STATE.MENU));
 backFromCampaignBtn.addEventListener("click", () => setState(STATE.MENU));
 backFromOnlineBtn.addEventListener("click", () => setState(STATE.MENU));
+
+sideInfoBtn.addEventListener("click", () => {
+  window.location.href = "info.html";
+});
 
 tabLocalBtn.addEventListener("click", () => {
   tabLocalBtn.classList.add("tab--active");
@@ -2318,6 +2331,12 @@ const player = {
 
 const PLAYER_BOUND_PAD = 6;
 
+const AD_REWARDS = {
+  survival: { seconds: 20, credits: 150, crystals: 0, xp: 120 },
+  campaign: { seconds: 40, credits: 350, crystals: 1, xp: 260 },
+  duel: { seconds: 60, credits: 700, crystals: 2, xp: 420 },
+};
+
 const ENEMY_TYPES = {
   drone: {
     hp: (wave) => 2 + Math.floor(wave * 0.15),
@@ -2746,6 +2765,58 @@ function endRun(reason) {
   }
 
   setState(STATE.OVER);
+  renderAdReward(reason);
+}
+
+function renderAdReward(reason) {
+  if (!adRewardBoxEl || !adRewardBtn || !adRewardTextEl) return;
+  const modeKey = run.mode === MODE.SURVIVAL ? "survival" : run.mode === MODE.CAMPAIGN ? "campaign" : "duel";
+  const cfg = AD_REWARDS[modeKey];
+  adRewardBoxEl.classList.remove("hidden");
+  adRewardBtn.disabled = false;
+  adRewardBtn.textContent = "Watch Ad";
+  adRewardTextEl.textContent = `Watch a ${cfg.seconds}s ad for +${cfg.credits} credits, +${cfg.crystals} crystals, +${cfg.xp} xp.`;
+
+  if (run.adRewardClaimed) {
+    adRewardBtn.disabled = true;
+    adRewardBtn.textContent = "Claimed";
+    return;
+  }
+
+  adRewardBtn.onclick = () => {
+    if (run.adRewardClaimed) return;
+    run.adRewardClaimed = true;
+    let remaining = cfg.seconds;
+    adRewardBtn.disabled = true;
+    adRewardBtn.textContent = `Ad: ${remaining}s`;
+    const timer = setInterval(() => {
+      remaining -= 1;
+      if (remaining <= 0) {
+        clearInterval(timer);
+        grantAdReward(cfg);
+        adRewardBtn.textContent = "Reward Granted";
+      } else {
+        adRewardBtn.textContent = `Ad: ${remaining}s`;
+      }
+    }, 1000);
+  };
+}
+
+function grantAdReward(cfg) {
+  if (!cfg) return;
+  const keepRewards = !progressionRequiresAuth() || isAuthed();
+  if (!keepRewards) {
+    adRewardTextEl.textContent = "Sign in to keep ad rewards.";
+    return;
+  }
+  SAVE.profile.credits += cfg.credits;
+  SAVE.profile.crystals += cfg.crystals;
+  SAVE.profile.crystalsShadow = Math.max(SAVE.profile.crystalsShadow || 0, SAVE.profile.crystals);
+  SAVE.profile.xp += cfg.xp;
+  SAVE.profile.updatedAt = nowMs();
+  saveNow();
+  updateTopBar();
+  if (CLOUD.enabled && CLOUD.user) cloudPush().catch(() => {});
 }
 
 function restartActiveRun() {
@@ -2786,6 +2857,7 @@ function startRun(mode, options = {}) {
   if (!guardStartRun(mode, options)) return;
   showFullscreenHint();
   activeMode = mode;
+  run.adRewardClaimed = false;
 
   // If a user selected a locked ship, fall back to Scout.
   const selected = shipById(SAVE.profile.selectedShipId);

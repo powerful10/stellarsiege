@@ -695,6 +695,79 @@ canvas#game {
   display: none;
 }
 
+.adReward {
+  margin: 14px auto 6px;
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(0,0,0,0.18);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.adReward__title {
+  font-weight: 800;
+  margin-bottom: 6px;
+}
+
+.adReward__text {
+  opacity: 0.8;
+  font-size: 13px;
+  margin-bottom: 10px;
+}
+
+.infoPage {
+  padding: 16px;
+}
+
+.infoPanel {
+  width: min(1100px, 96vw);
+  margin: 0 auto;
+  padding: 20px;
+  border-radius: 18px;
+  background: rgba(10, 15, 35, 0.92);
+  border: 1px solid rgba(255,255,255,0.08);
+  box-shadow: 0 25px 60px rgba(0,0,0,0.45);
+}
+
+.infoHeader {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.infoBrand {
+  width: 200px;
+  max-width: 60vw;
+}
+
+.infoTitle h1 {
+  margin: 0;
+  font-size: 36px;
+}
+
+.infoBack {
+  text-decoration: none;
+}
+
+.infoSection {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.infoSection h2 {
+  margin: 0 0 6px;
+  font-size: 18px;
+}
+
+.infoSection ul {
+  margin: 6px 0 0 18px;
+}
+
 .fsHint {
   position: absolute;
   left: 50%;
