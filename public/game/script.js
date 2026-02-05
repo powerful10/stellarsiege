@@ -1246,7 +1246,7 @@ const CLOUD = {
 };
 
 // -----------------------------
-// Payments (Stripe backend) - optional
+// Payments (Lemon Squeezy backend) - optional
 // -----------------------------
 
 const PAY = {
@@ -1274,7 +1274,7 @@ async function startCrystalPurchase(packId) {
   }
 
   const idToken = await CLOUD.user.getIdToken();
-  const res = await fetch(`${apiBase}/api/stripe/create-checkout-session`, {
+  const res = await fetch(`${apiBase}/api/lemonsqueezy/create-checkout-session`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -1423,7 +1423,7 @@ async function cloudPullMerge() {
   const localUpdated = Number(SAVE.profile.updatedAt || 0);
   const remoteUpdated = Number(remote.profile && remote.profile.updatedAt ? remote.profile.updatedAt : 0);
 
-  // Crystals are treated as cloud-authoritative (purchases are fulfilled server-side via Stripe webhook).
+  // Crystals are treated as cloud-authoritative (purchases are fulfilled server-side via Lemon Squeezy webhook).
   const remoteCrystals = Number(remote.profile && Number.isFinite(Number(remote.profile.crystals)) ? remote.profile.crystals : 0);
   SAVE.profile.crystals = remoteCrystals;
   SAVE.profile.crystalsShadow = remoteCrystals;
@@ -3493,7 +3493,7 @@ updateRotateOverlay();
 updateTouchControlsVisibility();
 if (!fullscreenCleanup) fullscreenCleanup = setupFullscreenToggle({ element: gameRootEl });
 
-// Handle return from Stripe Checkout (server redirects to /?purchase=success or cancel)
+// Handle return from checkout redirect (server redirects to /?purchase=success or cancel)
 try {
   const params = new URLSearchParams(window.location.search);
   const purchase = params.get("purchase");

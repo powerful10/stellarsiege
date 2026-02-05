@@ -1,19 +1,29 @@
-﻿const path = require('path');
+const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 
 require('dotenv').config();
 
 const express = require('express');
 const cors = require('cors');
 
-const Stripe = require('stripe');
 const admin = require('firebase-admin');
 
 const PORT = Number(process.env.PORT || 8787);
 const ALLOWED_ORIGIN = (process.env.ALLOWED_ORIGIN || '').trim();
 
-function hasStripe() {
-  return Boolean((process.env.STRIPE_SECRET_KEY || '').trim());
+function getLemonConfig() {
+  return {
+    apiKey: (process.env.LEMON_API_KEY || '').trim(),
+    storeId: (process.env.LEMON_STORE_ID || '').trim(),
+    webhookSecret: (process.env.LEMON_WEBHOOK_SECRET || '').trim(),
+    testMode: /^(1|true|yes)$/i.test((process.env.LEMON_TEST_MODE || '').trim()),
+  };
+}
+
+function hasLemonSqueezy() {
+  const { apiKey, storeId } = getLemonConfig();
+  return Boolean(apiKey && storeId);
 }
 
 function hasFirebaseAdminConfig() {
@@ -44,15 +54,6 @@ function initFirebaseAdmin() {
   });
 }
 
-function createStripe() {
-  if (!hasStripe()) return null;
-  return new Stripe(process.env.STRIPE_SECRET_KEY, {
-    apiVersion: '2024-06-20',
-  });
-}
-
-const stripe = createStripe();
-
 const app = express();
 
 app.disable('x-powered-by');
@@ -75,7 +76,7 @@ app.get('/terms.html', (req, res) => res.sendFile(path.join(__dirname, 'terms.ht
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
-    stripe: Boolean(stripe),
+    lemonSqueezy: hasLemonSqueezy(),
     firebaseAdmin: hasFirebaseAdminConfig(),
   });
 });
@@ -109,15 +110,44 @@ function requireFirebaseAuth(req, res, next) {
 }
 
 function priceForPack(packId) {
-  // You can move these to Stripe Products + Prices later.
+  // You can move these to Lemon Squeezy variants later.
   if (packId === 'crystals_100') return { name: '100 Crystals', amount: 99, currency: 'usd', crystals: 100 };
   if (packId === 'crystals_550') return { name: '550 Crystals', amount: 499, currency: 'usd', crystals: 550 };
   throw new Error('Unknown packId');
 }
 
-app.post('/api/stripe/create-checkout-session', express.json(), requireFirebaseAuth, async (req, res) => {
-  if (!stripe) {
-    res.status(501).json({ error: 'Stripe not configured on server.' });
+function lemonVariantForPack(packId) {
+  if (packId === 'crystals_100') return (process.env.LEMON_VARIANT_CRYSTALS_100 || '').trim();
+  if (packId === 'crystals_550') return (process.env.LEMON_VARIANT_CRYSTALS_550 || '').trim();
+  throw new Error('Unknown packId');
+}
+
+async function postCheckout(payload, apiKey) {
+  const res = await fetch('https://api.lemonsqueezy.com/v1/checkouts', {
+    method: 'POST',
+    headers: {
+      Accept: 'application/vnd.api+json',
+      'Content-Type': 'application/vnd.api+json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const text = await res.text();
+  let json = null;
+  try {
+    json = text ? JSON.parse(text) : null;
+  } catch {
+    json = null;
+  }
+
+  return { res, text, json };
+}
+
+app.post('/api/lemonsqueezy/create-checkout-session', express.json(), requireFirebaseAuth, async (req, res) => {
+  const { apiKey, storeId, testMode } = getLemonConfig();
+  if (!apiKey || !storeId) {
+    res.status(501).json({ error: 'Lemon Squeezy not configured on server.' });
     return;
   }
 
@@ -131,63 +161,106 @@ app.post('/api/stripe/create-checkout-session', express.json(), requireFirebaseA
     return;
   }
 
+  const variantId = lemonVariantForPack(packId);
+  if (!variantId) {
+    res.status(501).json({ error: 'Missing Lemon Squeezy variant ID for pack.' });
+    return;
+  }
+
   const origin = req.headers.origin || `http://localhost:${PORT}`;
 
-  const session = await stripe.checkout.sessions.create({
-    mode: 'payment',
-    success_url: `${origin}/?purchase=success`,
-    cancel_url: `${origin}/?purchase=cancel`,
-    client_reference_id: req.user.uid,
-    line_items: [
-      {
-        price_data: {
-          currency: pack.currency,
-          product_data: {
-            name: pack.name,
-          },
-          unit_amount: pack.amount,
+  const payload = {
+    data: {
+      type: 'checkouts',
+      attributes: {
+        product_options: {
+          redirect_url: `${origin}/?purchase=success`,
         },
-        quantity: 1,
+        checkout_data: {
+          custom: {
+            uid: req.user.uid,
+            packId,
+            crystals: String(pack.crystals),
+          },
+        },
+        ...(testMode ? { test_mode: true } : {}),
       },
-    ],
-    metadata: {
-      uid: req.user.uid,
-      packId,
-      crystals: String(pack.crystals),
+      relationships: {
+        store: { data: { type: 'stores', id: storeId } },
+        variant: { data: { type: 'variants', id: variantId } },
+      },
     },
-  });
+  };
 
-  res.json({ url: session.url });
+  const { res: apiRes, text, json } = await postCheckout(payload, apiKey);
+
+  if (!apiRes.ok) {
+    res.status(502).json({
+      error: 'Checkout creation failed',
+      details: (json && json.errors) || text || 'Unknown error',
+    });
+    return;
+  }
+
+  const url = json && json.data && json.data.attributes ? json.data.attributes.url : null;
+  if (!url) {
+    res.status(502).json({ error: 'Checkout failed: missing URL' });
+    return;
+  }
+
+  res.json({ url });
 });
 
-// Stripe webhooks need the raw body.
-app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
-  if (!stripe) {
-    res.status(501).send('Stripe not configured');
+// Lemon Squeezy webhooks need the raw body.
+app.post('/api/lemonsqueezy/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+  const { webhookSecret } = getLemonConfig();
+  if (!webhookSecret) {
+    res.status(501).send('Missing LEMON_WEBHOOK_SECRET');
     return;
   }
 
-  const sig = req.headers['stripe-signature'];
-  const secret = (process.env.STRIPE_WEBHOOK_SECRET || '').trim();
-  if (!secret) {
-    res.status(501).send('Missing STRIPE_WEBHOOK_SECRET');
+  const sig = req.headers['x-signature'];
+  if (!sig) {
+    res.status(400).send('Missing X-Signature header');
     return;
   }
 
-  let event;
+  const expected = crypto.createHmac('sha256', webhookSecret).update(req.body).digest('hex');
+  const sigStr = String(sig || '');
+  if (!sigStr || sigStr.length !== expected.length) {
+    res.status(400).send('Webhook signature verification failed.');
+    return;
+  }
+
+  const expectedBuf = Buffer.from(expected, 'utf8');
+  const sigBuf = Buffer.from(sigStr, 'utf8');
+  if (!crypto.timingSafeEqual(expectedBuf, sigBuf)) {
+    res.status(400).send('Webhook signature verification failed.');
+    return;
+  }
+
+  let payload;
   try {
-    event = stripe.webhooks.constructEvent(req.body, sig, secret);
-  } catch (err) {
-    res.status(400).send(`Webhook signature verification failed.`);
+    payload = JSON.parse(req.body.toString('utf8'));
+  } catch {
+    res.status(400).send('Invalid JSON payload.');
     return;
   }
 
-  if (event.type === 'checkout.session.completed') {
+  const eventName = req.headers['x-event-name'] || (payload.meta && payload.meta.event_name);
+
+  if (eventName === 'order_created') {
     try {
       initFirebaseAdmin();
-      const session = event.data.object;
-      const uid = session.metadata && session.metadata.uid;
-      const crystals = Number(session.metadata && session.metadata.crystals);
+      const custom = (payload.meta && payload.meta.custom_data) || {};
+      const uid = custom.uid;
+      const crystals = Number(custom.crystals);
+
+      const status = payload.data && payload.data.attributes ? payload.data.attributes.status : null;
+      if (status && status !== 'paid') {
+        res.json({ received: true });
+        return;
+      }
 
       if (uid && Number.isFinite(crystals) && crystals > 0) {
         const db = admin.firestore();
@@ -227,6 +300,6 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async
 
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
-  console.log(`Stripe: ${stripe ? 'enabled' : 'disabled'}`);
+  console.log(`Lemon Squeezy: ${hasLemonSqueezy() ? 'enabled' : 'disabled'}`);
   console.log(`Firebase Admin: ${hasFirebaseAdminConfig() ? 'configured' : 'disabled'}`);
 });

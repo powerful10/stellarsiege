@@ -1,6 +1,0 @@
-{
-  "version": 3,
-  "sources": [],
-  "sections": [
-    {"offset": {"line": 4, "column": 0}, "map": {"version":3,"sources":["file:///C:/dev/stellar-siege/pages/index.js"],"sourcesContent":["export async function getServerSideProps(ctx) {\n  const resolvedUrl = ctx && ctx.resolvedUrl ? String(ctx.resolvedUrl) : \"/\";\n  const qIndex = resolvedUrl.indexOf(\"?\");\n  const search = qIndex >= 0 ? resolvedUrl.slice(qIndex) : \"\";\n\n  return {\n    redirect: {\n      destination: `/game/index.html${search}`,\n      permanent: false,\n    },\n  };\n}\n\nexport default function Home() {\n  return null;\n}\n\n"],"names":[],"mappings":";;;;;;AAAO,eAAe,mBAAmB,GAAG;IAC1C,MAAM,cAAc,OAAO,IAAI,WAAW,GAAG,OAAO,IAAI,WAAW,IAAI;IACvE,MAAM,SAAS,YAAY,OAAO,CAAC;IACnC,MAAM,SAAS,UAAU,IAAI,YAAY,KAAK,CAAC,UAAU;IAEzD,OAAO;QACL,UAAU;YACR,aAAa,CAAC,gBAAgB,EAAE,QAAQ;YACxC,WAAW;QACb;IACF;AACF;AAEe,SAAS;IACtB,OAAO;AACT"}}]
-}

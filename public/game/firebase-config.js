@@ -21,8 +21,7 @@
 
 window.FIREBASE_CONFIG = null;
 
-// Optional: payments backend (Stripe) base URL (same-origin if empty).
+// Optional: payments backend (Lemon Squeezy) base URL (same-origin if empty).
 // When you deploy the backend, set e.g.:
 // window.PAYMENTS_API_BASE = "https://yourdomain.com";
 window.PAYMENTS_API_BASE = "";
-
