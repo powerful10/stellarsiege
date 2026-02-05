@@ -195,7 +195,6 @@ function setupFullscreenToggle({ element }) {
   };
 
   const onTouchStart = (e) => {
-    if (!isGameplayState()) return;
     if (!e.touches || e.touches.length != 2) return;
     const t0 = e.touches[0];
     const t1 = e.touches[1];
@@ -263,11 +262,16 @@ async function toggleFullscreen(element) {
   }
 }
 
-function isGameplayState() {
-  return state === STATE.RUN && (activeMode === MODE.SURVIVAL || activeMode === MODE.CAMPAIGN || activeMode === MODE.DUEL);
-}
-
 let fullscreenCleanup = null;
+let fullscreenKeybound = false;
+
+function shouldIgnoreFullscreenHotkey(target) {
+  if (!target) return false;
+  const tag = String(target.tagName || "").toLowerCase();
+  if (tag === "input" || tag === "textarea" || tag === "select") return true;
+  if (target.isContentEditable) return true;
+  return false;
+}
 
 function setState(next) {
   state = next;
@@ -3491,7 +3495,18 @@ setState(STATE.MENU);
 updateHud();
 updateRotateOverlay();
 updateTouchControlsVisibility();
-if (!fullscreenCleanup) fullscreenCleanup = setupFullscreenToggle({ element: gameRootEl });
+if (!fullscreenCleanup) fullscreenCleanup = setupFullscreenToggle({ element: document.documentElement });
+
+if (!fullscreenKeybound) {
+  fullscreenKeybound = true;
+  window.addEventListener("keydown", (e) => {
+    if (e.repeat) return;
+    if (shouldIgnoreFullscreenHotkey(e.target)) return;
+    if (String(e.key || "").toLowerCase() !== "f") return;
+    e.preventDefault();
+    toggleFullscreen(document.documentElement);
+  });
+}
 
 // Handle return from checkout redirect (server redirects to /?purchase=success or cancel)
 try {
