@@ -1,0 +1,332 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Stellar Siege — Roguelite Arena</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <link rel="apple-touch-icon" href="favicon.svg" />
+
+  <!-- Monetization (AdSense) -->
+  <!-- Replace `ca-pub-XXXXXXXXXXXXXXX` with your AdSense publisher id after approval. -->
+  <!-- <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-XXXXXXXXXXXXXXX" crossorigin="anonymous"></script> -->
+</head>
+<body>
+  <div class="layout">
+    <!-- Optional ad slot (enable after AdSense approval + ad unit setup) -->
+    <!--
+    <div class="adSlot">
+      <ins class="adsbygoogle"
+           style="display:block"
+           data-ad-client="ca-pub-XXXXXXXXXXXXXXX"
+           data-ad-slot="YYYYYYYYYY"
+           data-ad-format="auto"
+           data-full-width-responsive="true"></ins>
+      <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
+    </div>
+    -->
+
+  <div id="gameRoot" class="gameRoot">
+  <div class="ui" id="ui">
+    <div class="topLeft">
+      <button id="menuBtn" class="menuBtn" aria-label="Menu">☰</button>
+      <div id="sideMenu" class="sideMenu hidden">
+        <button id="menuResumeBtn" class="btnGhost">Resume</button>
+        <button id="menuHomeBtn" class="btnGhost">Home</button>
+        <button id="menuRestartBtn" class="btnGhost">Restart</button>
+        <button id="menuCampaignBtn" class="btnGhost">Campaign</button>
+        <button id="menuHangarBtn" class="btnGhost">Hangar</button>
+        <button id="menuLeaderboardBtn" class="btnGhost">Leaderboard</button>
+        <button id="menuOnlineBtn" class="btnGhost">Online</button>
+        <button id="menuResetBtn" class="btnGhost">Reset Progress</button>
+        <div class="fine" style="margin:10px 6px 0">Tip: Sign in to save upgrades and purchases.</div>
+      </div>
+    </div>
+
+    <div class="topCenterBrand" aria-label="Stellar Siege">
+      <img class="brandImg" src="brand.svg" alt="Stellar Siege" />
+    </div>
+
+    <div class="topRight">
+      <div class="balances" aria-label="Balances">
+        <div class="bal" title="Credits">
+          <span class="bal__shape bal__shape--coin" aria-hidden="true"></span>
+          <span class="bal__label">Credits</span>
+          <span id="topCredits">0</span>
+        </div>
+        <div class="bal" title="Crystals">
+          <span class="bal__shape bal__shape--crystal" aria-hidden="true"></span>
+          <span class="bal__label">Crystals</span>
+          <span id="topCrystals">0</span>
+        </div>
+      </div>
+      <button id="topSignInBtn" class="btnAuth">Sign in</button>
+      <button id="topAccountBtn" class="avatarBtn hidden" aria-label="Account">
+        <img id="topAvatarImg" class="avatarImg hidden" alt="" />
+        <span id="topAvatarFallback" class="avatarFallback">P</span>
+      </button>
+      <button id="topSignOutBtn" class="btnAuthGhost hidden">Sign out</button>
+    </div>
+
+    <div id="hud" class="hud hidden">
+      <div class="hud__row">
+        <div class="hud__item">Score <span id="score">0</span></div>
+        <div class="hud__item">Wave <span id="wave">1</span></div>
+        <div class="hud__item">Combo <span id="combo">x1</span></div>
+        <div class="hud__item">Lvl <span id="level">1</span></div>
+        <div class="hud__item hud__item--credits">Credits <span id="credits">0</span></div>
+        <div class="hud__item hud__item--crystals">Crystals <span id="crystals">0</span></div>
+        <div class="hud__item hud__item--wide">Objective <span id="objective">—</span></div>
+      </div>
+      <div class="bars">
+        <div class="bar">
+          <div class="bar__label">Shield</div>
+          <div class="bar__track"><div id="shieldBar" class="bar__fill"></div></div>
+        </div>
+        <div class="bar">
+          <div class="bar__label">Hull</div>
+          <div class="bar__track"><div id="hullBar" class="bar__fill bar__fill--hull"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="touchControls" aria-label="Touch controls">
+      <div class="touchControls__pad">
+        <button class="touchBtn touchBtn--dir" id="touchUp" aria-label="Move up">
+          <span class="touchBtn__arrow">?</span>
+          <span class="touchBtn__label">T</span>
+        </button>
+        <div class="touchControls__row">
+          <button class="touchBtn touchBtn--dir" id="touchLeft" aria-label="Move left">
+            <span class="touchBtn__arrow">?</span>
+            <span class="touchBtn__label">L</span>
+          </button>
+          <button class="touchBtn touchBtn--dir" id="touchDown" aria-label="Move down">
+            <span class="touchBtn__arrow">?</span>
+            <span class="touchBtn__label">B</span>
+          </button>
+          <button class="touchBtn touchBtn--dir" id="touchRight" aria-label="Move right">
+            <span class="touchBtn__arrow">?</span>
+            <span class="touchBtn__label">R</span>
+          </button>
+        </div>
+      </div>
+      <div class="touchControls__actions">
+        <button class="touchBtn touchBtn--shoot" id="touchShoot" aria-label="Shoot">SH</button>
+      </div>
+    </div>
+
+    <div id="menu" class="overlay">
+      <div class="panel panel--wide">
+        <div class="titleRow">
+          <h1>Stellar Siege</h1>
+          <div class="pill">Roguelite Arena</div>
+        </div>
+        <img class="menuBrand" src="brand.svg" alt="Stellar Siege" />
+        <p class="sub">WASD / Arrows to move · Mouse to aim · Click or Space to shoot</p>
+        <div class="menuGrid">
+          <button id="playSurvivalBtn">Play Survival</button>
+          <button id="playCampaignBtn">Campaign</button>
+          <button id="hangarBtn">Hangar & Upgrades</button>
+          <button id="leaderboardBtn">Leaderboard</button>
+          <button id="onlineBtn">Online Duel (Beta)</button>
+        </div>
+        <div class="fine">
+          Tip: Collect upgrade orbs mid-run. Spend Credits/Crystals in the Hangar.
+        </div>
+      </div>
+    </div>
+
+    <div id="hangar" class="overlay hidden">
+      <div class="panel panel--wide">
+        <div class="panelTop">
+          <h2>Hangar</h2>
+          <div class="panelTop__right">
+            <div class="pill" id="pilotPill">Pilot</div>
+            <button class="btnGhost" id="backFromHangarBtn">Back</button>
+          </div>
+        </div>
+
+        <div class="hangarGrid">
+          <div class="card">
+            <h3>Ship Stats</h3>
+            <div id="shipPicker" class="shipPicker"></div>
+            <div id="statsBox" class="stats"></div>
+          </div>
+          <div class="card">
+            <h3>Upgrades</h3>
+            <div id="upgradeList" class="list"></div>
+          </div>
+          <div class="card">
+            <h3>Store</h3>
+            <div class="store">
+              <div class="storeRow">
+                <div>
+                  <div class="storeName">100 Crystals</div>
+                  <div class="storeDesc">Crystals are account-based (requires sign-in)</div>
+                </div>
+                <button class="btn" id="buy100">$0.99</button>
+              </div>
+              <div class="storeRow">
+                <div>
+                  <div class="storeName">550 Crystals</div>
+                  <div class="storeDesc">Best value pack</div>
+                </div>
+                <button class="btn" id="buy550">$4.99</button>
+              </div>
+              <div class="storeRow">
+                <div>
+                  <div class="storeName">Convert Crystals → Credits</div>
+                  <div class="storeDesc">1 crystal = 200 credits</div>
+                </div>
+                <button class="btn" id="convertBtn">Convert</button>
+              </div>
+              <div class="fine">Payments require hosting + a Stripe backend. Crystals are delivered to your account after checkout.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="leaderboard" class="overlay hidden">
+      <div class="panel panel--wide">
+        <div class="panelTop">
+          <h2>Leaderboard</h2>
+          <div class="panelTop__right">
+            <button class="btnGhost" id="backFromLeaderboardBtn">Back</button>
+          </div>
+        </div>
+        <div class="tabs">
+          <button class="tab tab--active" id="tabLocal">Local</button>
+          <button class="tab" id="tabGlobal">Global (needs login)</button>
+        </div>
+        <div id="leaderboardList" class="leaderboard"></div>
+        <div class="fine">Global leaderboard + Google accounts are optional and require Firebase config.</div>
+      </div>
+    </div>
+
+    <div id="campaign" class="overlay hidden">
+      <div class="panel panel--wide">
+        <div class="panelTop">
+          <h2>Campaign</h2>
+          <div class="panelTop__right">
+            <button class="btnGhost" id="backFromCampaignBtn">Back</button>
+          </div>
+        </div>
+        <div class="fine">Complete missions to unlock the next. Rewards scale with difficulty.</div>
+        <div id="missionList" class="missionList"></div>
+      </div>
+    </div>
+
+    <div id="online" class="overlay hidden">
+      <div class="panel panel--wide">
+        <div class="panelTop">
+          <h2>Online Duel (Beta)</h2>
+          <div class="panelTop__right">
+            <button class="btnGhost" id="backFromOnlineBtn">Back</button>
+          </div>
+        </div>
+
+        <div class="onlineGrid">
+          <div class="card">
+            <h3>Account</h3>
+            <div id="authStatus" class="fine">Not connected.</div>
+            <div class="row">
+              <button class="btn" id="googleSignInBtn">Sign in with Google</button>
+              <button class="btnGhost" id="signOutBtn">Sign out</button>
+            </div>
+            <div class="fine">For real auth, add Firebase config in `index.html` and host the site (not file://).</div>
+          </div>
+          <div class="card">
+            <h3>Matchmaking</h3>
+            <div class="row">
+              <input id="roomCode" class="input" placeholder="Room code" />
+              <button class="btn" id="createRoomBtn">Create</button>
+              <button class="btn" id="joinRoomBtn">Join</button>
+            </div>
+            <div class="row" style="margin-top:10px; justify-content:flex-start">
+              <button class="btn" id="startDuelBtn">Start Duel</button>
+            </div>
+            <div id="onlineHint" class="fine">Online is disabled until Firebase is configured.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="account" class="overlay hidden">
+      <div class="panel panel--wide">
+        <div class="panelTop">
+          <h2>Account</h2>
+          <div class="panelTop__right">
+            <button class="btnGhost" id="closeAccountBtn">Close</button>
+          </div>
+        </div>
+        <div id="accountBox" class="accountBox"></div>
+        <div class="row" style="margin-top:14px">
+          <button class="btn" id="accountSyncBtn">Sync Now</button>
+          <button class="btnGhost" id="accountToOnlineBtn">Online</button>
+          <button class="btnGhost" id="accountSignOutBtn">Sign out</button>
+        </div>
+        <div class="fine">Tip: Purchases and upgrades are tied to your Google account when Firebase is configured.</div>
+      </div>
+    </div>
+
+    <div id="upgradePick" class="overlay hidden">
+      <div class="panel panel--wide">
+        <h2>Choose Upgrade</h2>
+        <div id="pickList" class="pickGrid"></div>
+        <div class="fine">These upgrades last for this run only.</div>
+      </div>
+    </div>
+
+    <div id="rotateOverlay" class="overlay hidden">
+      <div class="panel">
+        <div class="rotateIcon" aria-hidden="true"></div>
+        <h2>Rotate Your Device</h2>
+        <p>Please rotate your device to play</p>
+      </div>
+    </div>
+
+    <div id="gameover" class="overlay hidden">
+      <div class="panel">
+        <h1 id="gameoverTitle">Signal Lost</h1>
+        <p id="gameoverSub" class="fine" style="margin:10px 0 18px"></p>
+        <p>Score: <span id="finalScore">0</span></p>
+        <p>Wave: <span id="finalWave">1</span></p>
+        <p>Rewards: <span id="finalRewards">0</span></p>
+        <div class="row">
+          <button id="restartBtn" class="btn">Play Again</button>
+          <button id="toMenuBtn" class="btnGhost">Menu</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <canvas id="game" width="960" height="600"></canvas>
+</div>
+
+    <!-- Optional: Firebase config lives here (keep secrets out; web config is public). -->
+    <script defer src="firebase-config.js"></script>
+    <!-- Optional: Firebase SDKs (only used if FIREBASE_CONFIG is set). -->
+    <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+    <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+    <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-database-compat.js"></script>
+    <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+    <script defer src="script.js"></script>
+
+    <!-- Optional ad slot (enable after AdSense approval + ad unit setup) -->
+    <!--
+    <div class="adSlot">
+      <ins class="adsbygoogle"
+           style="display:block"
+           data-ad-client="ca-pub-XXXXXXXXXXXXXXX"
+           data-ad-slot="ZZZZZZZZZZ"
+           data-ad-format="auto"
+           data-full-width-responsive="true"></ins>
+      <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
+    </div>
+    -->
+  </div>
+</body>
+</html>
