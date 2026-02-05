@@ -62,20 +62,41 @@ def add_engine(x, y, z, scale=(0.18, 0.18, 0.3)):
     obj.data.materials.append(MAT_GLOW)
     return obj
 
-def build_ship(name, tier=1):
+def build_ship(name, tier=1, profile=None):
     clear_scene()
-    hull = add_hull(scale=(1.0 + tier*0.08, 1.8 + tier*0.18, 0.35 + tier*0.03))
-    add_wing(0.8, 0.2, 0.0, scale=(0.5 + tier*0.05, 1.2 + tier*0.1, 0.08), tilt=math.radians(12))
-    add_wing(-0.8, 0.2, 0.0, scale=(0.5 + tier*0.05, 1.2 + tier*0.1, 0.08), tilt=math.radians(-12))
-    add_cockpit(scale=(0.25 + tier*0.03, 0.4 + tier*0.04, 0.18 + tier*0.02))
-    add_engine(0.35, -0.7, 0.0, scale=(0.16, 0.16, 0.35 + tier*0.05))
-    add_engine(-0.35, -0.7, 0.0, scale=(0.16, 0.16, 0.35 + tier*0.05))
+    profile = profile or {}
+    hx, hy, hz = profile.get("hull", (1.0, 1.8, 0.35))
+    wx, wy, wz = profile.get("wing", (0.5, 1.2, 0.08))
+    wing_tilt = profile.get("wing_tilt", 12)
+    cockpit = profile.get("cockpit", (0.25, 0.4, 0.18))
+    engine = profile.get("engine", (0.16, 0.16, 0.35))
+    wing_pos = profile.get("wing_pos", 0.8)
+    tail_fin = profile.get("tail_fin", False)
+    nose_spike = profile.get("nose_spike", False)
+    side_pods = profile.get("side_pods", False)
+
+    hull = add_hull(scale=(hx + tier*0.08, hy + tier*0.18, hz + tier*0.03))
+    add_wing(wing_pos, 0.2, 0.0, scale=(wx + tier*0.05, wy + tier*0.1, wz), tilt=math.radians(wing_tilt))
+    add_wing(-wing_pos, 0.2, 0.0, scale=(wx + tier*0.05, wy + tier*0.1, wz), tilt=math.radians(-wing_tilt))
+    add_cockpit(scale=(cockpit[0] + tier*0.03, cockpit[1] + tier*0.04, cockpit[2] + tier*0.02))
+    add_engine(0.35, -0.7, 0.0, scale=(engine[0], engine[1], engine[2] + tier*0.05))
+    add_engine(-0.35, -0.7, 0.0, scale=(engine[0], engine[1], engine[2] + tier*0.05))
 
     # extra fins for higher tiers
     if tier >= 3:
         add_wing(0.0, 0.8, 0.18, scale=(0.2, 0.6, 0.06), tilt=0.0)
     if tier >= 4:
         add_engine(0.0, -0.9, 0.1, scale=(0.2, 0.2, 0.4))
+    if tail_fin:
+        add_wing(0.0, -0.6, 0.18, scale=(0.18, 0.6, 0.08), tilt=0.0)
+    if nose_spike:
+        bpy.ops.mesh.primitive_cone_add(radius1=0.18, depth=0.6, location=(0, 1.2 + tier*0.1, 0))
+        obj = bpy.context.active_object
+        obj.rotation_euler[0] = math.radians(90)
+        obj.data.materials.append(MAT_ACCENT)
+    if side_pods:
+        add_wing(1.1, -0.1, 0.0, scale=(0.25, 0.6, 0.12), tilt=math.radians(5))
+        add_wing(-1.1, -0.1, 0.0, scale=(0.25, 0.6, 0.12), tilt=math.radians(-5))
 
     # export
     filepath = os.path.join(OUTPUT_DIR, f"{name}.glb")
@@ -84,13 +105,21 @@ def build_ship(name, tier=1):
 
 def main():
     print("Export folder:", os.path.abspath(OUTPUT_DIR))
+    profiles = {
+        "scout": dict(hull=(0.9, 1.6, 0.28), wing=(0.35, 0.9, 0.06), wing_tilt=8, cockpit=(0.22, 0.32, 0.16)),
+        "striker": dict(hull=(1.0, 1.9, 0.33), wing=(0.55, 1.25, 0.08), wing_tilt=14, nose_spike=True),
+        "ranger": dict(hull=(1.05, 2.1, 0.32), wing=(0.45, 1.5, 0.07), wing_tilt=6, tail_fin=True),
+        "astra": dict(hull=(1.1, 1.8, 0.36), wing=(0.7, 1.1, 0.1), wing_tilt=18, side_pods=True),
+        "warden": dict(hull=(1.2, 2.0, 0.4), wing=(0.6, 1.3, 0.1), wing_tilt=10, tail_fin=True, side_pods=True),
+        "valkyrie": dict(hull=(1.3, 2.2, 0.42), wing=(0.8, 1.45, 0.12), wing_tilt=20, nose_spike=True, side_pods=True),
+    }
     for tier in (1, 2, 3):
-        build_ship(f"scout_t{tier}", tier=tier)
-        build_ship(f"striker_t{tier}", tier=min(3, tier + 1))
-        build_ship(f"ranger_t{tier}", tier=min(4, tier + 1))
-        build_ship(f"astra_t{tier}", tier=min(4, tier + 1))
-        build_ship(f"warden_t{tier}", tier=min(5, tier + 1))
-        build_ship(f"valkyrie_t{tier}", tier=min(5, tier + 2))
+        build_ship(f"scout_t{tier}", tier=tier, profile=profiles["scout"])
+        build_ship(f"striker_t{tier}", tier=min(3, tier + 1), profile=profiles["striker"])
+        build_ship(f"ranger_t{tier}", tier=min(4, tier + 1), profile=profiles["ranger"])
+        build_ship(f"astra_t{tier}", tier=min(4, tier + 1), profile=profiles["astra"])
+        build_ship(f"warden_t{tier}", tier=min(5, tier + 1), profile=profiles["warden"])
+        build_ship(f"valkyrie_t{tier}", tier=min(5, tier + 2), profile=profiles["valkyrie"])
 
 if __name__ == "__main__":
     main()
