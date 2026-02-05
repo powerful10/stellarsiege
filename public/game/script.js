@@ -11,11 +11,35 @@ console.log("[Stellar Siege] boot");
 
 const $ = (id) => document.getElementById(id);
 
+function isTouchDevice() {
+  return window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
+}
+
+function lockMobileZoom() {
+  if (!isTouchDevice()) return;
+  const meta = document.querySelector('meta[name="viewport"]');
+  if (!meta) return;
+  meta.setAttribute(
+    "content",
+    "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
+  );
+
+  const prevent = (e) => {
+    if (e.touches && e.touches.length > 1) e.preventDefault();
+  };
+  document.addEventListener("touchmove", prevent, { passive: false });
+  document.addEventListener("gesturestart", (e) => e.preventDefault(), { passive: false });
+  document.addEventListener("gesturechange", (e) => e.preventDefault(), { passive: false });
+  document.addEventListener("gestureend", (e) => e.preventDefault(), { passive: false });
+}
+
 function must(id) {
   const el = $(id);
   if (!el) throw new Error(`Missing element #${id} (check index.html)`);
   return el;
 }
+
+lockMobileZoom();
 
 // HUD
 const hudEl = must("hud");
@@ -198,16 +222,19 @@ function setupFullscreenToggle({ element }) {
     if (!e.touches || e.touches.length != 2) return;
     const t0 = e.touches[0];
     const t1 = e.touches[1];
+    const dx0 = t1.clientX - t0.clientX;
+    const dy0 = t1.clientY - t0.clientY;
+    const dist0 = Math.hypot(dx0, dy0) || 1;
     start = {
       t: Date.now(),
       x: (t0.clientX + t1.clientX) / 2,
       y: (t0.clientY + t1.clientY) / 2,
+      dist: dist0,
     };
   };
 
   const onTouchMove = (e) => {
     if (!start) return;
-    if (!isGameplayState()) return;
     if (!e.touches || e.touches.length != 2) return;
     const t0 = e.touches[0];
     const t1 = e.touches[1];
@@ -215,9 +242,16 @@ function setupFullscreenToggle({ element }) {
     const y = (t0.clientY + t1.clientY) / 2;
     const dx = x - start.x;
     const dy = y - start.y;
+    const dxp = t1.clientX - t0.clientX;
+    const dyp = t1.clientY - t0.clientY;
+    const dist = Math.hypot(dxp, dyp) || 1;
+    const scale = dist / start.dist;
     const dt = Date.now() - start.t;
 
-    if (dt < 700 && Math.abs(dx) > 140 && Math.abs(dy) < 80) {
+    const isSwipe = dt < 700 && Math.abs(dx) > 140 && Math.abs(dy) < 80;
+    const isPinch = dt < 700 && Math.abs(scale - 1) > 0.22;
+
+    if (isSwipe || isPinch) {
       start = null;
       if (!canToggle()) return;
       toggleFullscreen(element);
