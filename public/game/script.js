@@ -116,6 +116,9 @@ const fsHintEl = must("fsHint");
 const adRewardBoxEl = must("adRewardBox");
 const adRewardTextEl = must("adRewardText");
 const adRewardBtn = must("adRewardBtn");
+const infoOverlayEl = must("infoOverlay");
+const infoCloseBtn = must("infoCloseBtn");
+const infoFullscreenBtn = must("infoFullscreenBtn");
 
 // Hamburger menu
 const menuBtn = must("menuBtn");
@@ -952,7 +955,7 @@ onlineBtn.addEventListener("click", () => {
 });
 
 infoBtn.addEventListener("click", () => {
-  window.location.href = "info.html";
+  infoOverlayEl.classList.remove("hidden");
 });
 
 backFromHangarBtn.addEventListener("click", () => setState(STATE.MENU));
@@ -960,8 +963,16 @@ backFromLeaderboardBtn.addEventListener("click", () => setState(STATE.MENU));
 backFromCampaignBtn.addEventListener("click", () => setState(STATE.MENU));
 backFromOnlineBtn.addEventListener("click", () => setState(STATE.MENU));
 
+infoCloseBtn.addEventListener("click", () => {
+  infoOverlayEl.classList.add("hidden");
+});
+
+infoFullscreenBtn.addEventListener("click", () => {
+  toggleFullscreen(document.documentElement);
+});
+
 sideInfoBtn.addEventListener("click", () => {
-  window.location.href = "info.html";
+  infoOverlayEl.classList.remove("hidden");
 });
 
 tabLocalBtn.addEventListener("click", () => {

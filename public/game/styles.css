@@ -726,6 +726,9 @@ canvas#game {
   background: rgba(10, 15, 35, 0.92);
   border: 1px solid rgba(255,255,255,0.08);
   box-shadow: 0 25px 60px rgba(0,0,0,0.45);
+  max-height: 90vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .infoHeader {
@@ -760,6 +763,11 @@ canvas#game {
 }
 
 .infoSection h2 {
+  margin: 0 0 6px;
+  font-size: 18px;
+}
+
+.infoSection h3 {
   margin: 0 0 6px;
   font-size: 18px;
 }

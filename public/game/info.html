@@ -16,7 +16,10 @@
           <h1>Stellar Siege</h1>
           <div class="pill">Game Guide</div>
         </div>
-        <a class="btnGhost infoBack" href="index.html">Back to Game</a>
+        <div class="row">
+          <button id="infoFsBtn" class="btnGhost">Fullscreen</button>
+          <a class="btnGhost infoBack" href="index.html">Back to Game</a>
+        </div>
       </div>
 
       <section class="infoSection">
@@ -71,5 +74,21 @@
       </section>
     </div>
   </div>
+  <script>
+    const fsBtn = document.getElementById("infoFsBtn");
+    function setLabel() {
+      fsBtn.textContent = document.fullscreenElement ? "Exit Fullscreen" : "Fullscreen";
+    }
+    fsBtn.addEventListener("click", async () => {
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen();
+      } else {
+        await document.exitFullscreen();
+      }
+      setLabel();
+    });
+    document.addEventListener("fullscreenchange", setLabel);
+    setLabel();
+  </script>
 </body>
 </html>
