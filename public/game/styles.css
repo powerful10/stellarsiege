@@ -240,6 +240,7 @@ canvas#game {
   font-weight: 900;
   cursor: pointer;
   transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+  backdrop-filter: blur(8px);
 }
 
 .menuBtn:hover {
@@ -342,16 +343,16 @@ canvas#game {
 
 .sideMenu {
   margin-top: 8px;
-  width: 220px;
-  padding: 8px;
-  border-radius: 14px;
-  max-height: 70vh;
+  width: min(280px, 80vw);
+  padding: 12px;
+  border-radius: 18px;
+  max-height: 72vh;
   overflow-y: auto;
-  border: 1px solid rgba(255,255,255,0.08);
-  background: rgba(10, 15, 35, 0.92);
-  box-shadow: 0 20px 40px rgba(0,0,0,0.35);
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(10, 15, 35, 0.96);
+  box-shadow: 0 25px 60px rgba(0,0,0,0.45);
   display: grid;
-  gap: 6px;
+  gap: 8px;
   scrollbar-width: thin;
   scrollbar-color: rgba(64,243,255,0.4) rgba(0,0,0,0.2);
   -webkit-overflow-scrolling: touch;
@@ -361,6 +362,17 @@ canvas#game {
 .sideMenu button {
   width: 100%;
   text-align: left;
+  padding: 12px 14px;
+  border-radius: 12px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+}
+
+.sideMenu button:hover {
+  border-color: rgba(64,243,255,0.4);
+  background: rgba(64,243,255,0.12);
 }
 
 .hud {
