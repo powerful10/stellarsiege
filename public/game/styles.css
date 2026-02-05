@@ -1049,3 +1049,7 @@ body[data-state="run"] .hud__item--crystals {
   display: none;
 }
 
+body[data-state="run"] .topCenterBrand {
+  display: none;
+}
+
