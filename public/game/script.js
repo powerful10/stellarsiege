@@ -78,6 +78,8 @@ const backFromHangarBtn = must("backFromHangarBtn");
 const statsBoxEl = must("statsBox");
 const shipPickerEl = must("shipPicker");
 const upgradeListEl = must("upgradeList");
+const shipModelEl = must("shipModel");
+const shipModelFallbackEl = must("shipModelFallback");
 const buy100Btn = must("buy100");
 const buy550Btn = must("buy550");
 const convertBtn = must("convertBtn");
@@ -745,6 +747,15 @@ function shipById(id) {
   return SHIPS.find((s) => s.id === id) || SHIPS[0];
 }
 
+const SHIP_MODELS = {
+  scout: "models/scout.glb",
+  striker: "models/striker.glb",
+  ranger: "models/ranger.glb",
+  astra: "models/astra.glb",
+  warden: "models/warden.glb",
+  valkyrie: "models/valkyrie.glb",
+};
+
 function defaultShipUpgrades() {
   return {
     damage: 0,
@@ -1206,6 +1217,19 @@ function renderHangar() {
     });
     shipPickerEl.appendChild(btn);
   });
+
+  // Ship model preview
+  const modelPath = SHIP_MODELS[selectedShip.id];
+  if (shipModelEl && shipModelFallbackEl) {
+    if (modelPath) {
+      shipModelEl.src = modelPath;
+      shipModelEl.classList.remove("hidden");
+      shipModelFallbackEl.classList.add("hidden");
+    } else {
+      shipModelEl.classList.add("hidden");
+      shipModelFallbackEl.classList.remove("hidden");
+    }
+  }
 
   // Stats preview for current ship
   const base = computePermanentStats(selectedShip.id);
