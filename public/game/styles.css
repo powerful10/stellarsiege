@@ -790,7 +790,7 @@ canvas#game {
   border: 1px solid rgba(255,255,255,0.08);
 }
 
-.shipCard model-viewer {
+.shipCard__art svg {
   width: 100%;
   height: 180px;
 }
@@ -880,10 +880,9 @@ canvas#game {
   overflow: hidden;
 }
 
-.shipModel model-viewer {
+.shipModel svg {
   width: 100%;
   height: 100%;
-  background: transparent;
 }
 
 @media (max-width: 720px) {

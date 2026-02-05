@@ -140,10 +140,7 @@
         <div class="hangarGrid">
           <div class="card">
             <h3>Ship Stats</h3>
-            <div class="shipModel">
-              <model-viewer id="shipModel" camera-controls auto-rotate interaction-prompt="none" shadow-intensity="0.6" exposure="1.0"></model-viewer>
-              <div id="shipModelFallback" class="fine">Ship model will appear here.</div>
-            </div>
+            <div class="shipModel" id="shipModel"></div>
             <div id="shipPicker" class="shipPicker"></div>
             <div id="statsBox" class="stats"></div>
           </div>
@@ -370,7 +367,6 @@
     <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
     <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-database-compat.js"></script>
     <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-    <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
     <script defer src="script.js"></script>
 
     <!-- Optional ad slot (enable after AdSense approval + ad unit setup) -->

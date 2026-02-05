@@ -79,7 +79,6 @@ const statsBoxEl = must("statsBox");
 const shipPickerEl = must("shipPicker");
 const upgradeListEl = must("upgradeList");
 const shipModelEl = must("shipModel");
-const shipModelFallbackEl = must("shipModelFallback");
 const buy100Btn = must("buy100");
 const buy550Btn = must("buy550");
 const convertBtn = must("convertBtn");
@@ -756,14 +755,36 @@ function shipById(id) {
   return SHIPS.find((s) => s.id === id) || SHIPS[0];
 }
 
-const SHIP_MODELS = {
-  scout: ["models/scout_t1.glb", "models/scout_t2.glb", "models/scout_t3.glb"],
-  striker: ["models/striker_t1.glb", "models/striker_t2.glb", "models/striker_t3.glb"],
-  ranger: ["models/ranger_t1.glb", "models/ranger_t2.glb", "models/ranger_t3.glb"],
-  astra: ["models/astra_t1.glb", "models/astra_t2.glb", "models/astra_t3.glb"],
-  warden: ["models/warden_t1.glb", "models/warden_t2.glb", "models/warden_t3.glb"],
-  valkyrie: ["models/valkyrie_t1.glb", "models/valkyrie_t2.glb", "models/valkyrie_t3.glb"],
-};
+function shipSvg(shipId, tier) {
+  const palettes = {
+    scout: ["#1de2c4", "#6ee7b7", "#0ea5e9"],
+    striker: ["#f97316", "#fb923c", "#f59e0b"],
+    ranger: ["#22c55e", "#4ade80", "#16a34a"],
+    astra: ["#f472b6", "#fb7185", "#e879f9"],
+    warden: ["#60a5fa", "#38bdf8", "#1d4ed8"],
+    valkyrie: ["#f59e0b", "#f97316", "#facc15"],
+  };
+  const colors = palettes[shipId] || ["#1de2c4", "#6ee7b7", "#0ea5e9"];
+  const c1 = colors[0];
+  const c2 = colors[1];
+  const c3 = colors[2];
+  const wing = tier === 0 ? 26 : tier === 1 ? 32 : 38;
+  const fin = tier === 2 ? 8 : tier === 1 ? 6 : 4;
+  return `
+    <svg viewBox="0 0 120 80" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="g" x1="0" x2="1" y1="0" y2="1">
+          <stop offset="0%" stop-color="${c1}"/>
+          <stop offset="100%" stop-color="${c3}"/>
+        </linearGradient>
+      </defs>
+      <polygon points="60,8 92,38 60,70 28,38" fill="url(#g)" opacity="0.95"/>
+      <polygon points="60,16 ${60+wing},40 60,64 ${60-wing},40" fill="${c2}" opacity="0.8"/>
+      <polygon points="60,20 ${60+fin},36 60,60 ${60-fin},36" fill="#0b0f1f" opacity="0.55"/>
+      <circle cx="60" cy="40" r="${6 + tier * 1.5}" fill="#fff" opacity="0.9"/>
+    </svg>
+  `;
+}
 
 function upgradeTier(upgrades) {
   const totalMax = PERM_UPGRADES.reduce((sum, u) => sum + u.max, 0);
@@ -1039,8 +1060,6 @@ function renderInfoShips() {
         </div>`
       )
       .join("");
-    const modelList = SHIP_MODELS[s.id] || [];
-    const modelPath = modelList[2] || modelList[0] || "";
     const card = document.createElement("div");
     card.className = "shipCard";
     card.innerHTML = `
@@ -1048,7 +1067,7 @@ function renderInfoShips() {
         <strong>${s.name}</strong>
         <span class="pill">${s.rarity}</span>
       </div>
-      <model-viewer src="${modelPath}" camera-controls auto-rotate interaction-prompt="none" shadow-intensity="0.6"></model-viewer>
+      <div class="shipCard__art">${shipSvg(s.id, 2)}</div>
       <div class="statBars">${bars}</div>
     `;
     container.appendChild(card);
@@ -1299,19 +1318,10 @@ function renderHangar() {
     shipPickerEl.appendChild(btn);
   });
 
-  // Ship model preview (tiered by upgrades)
+  // Ship model preview (2D SVG)
   const tier = upgradeTier(selectedState.upgrades);
-  const modelList = SHIP_MODELS[selectedShip.id] || [];
-  const modelPath = modelList[tier];
-  if (shipModelEl && shipModelFallbackEl) {
-    if (modelPath) {
-      shipModelEl.src = modelPath;
-      shipModelEl.classList.remove("hidden");
-      shipModelFallbackEl.classList.add("hidden");
-    } else {
-      shipModelEl.classList.add("hidden");
-      shipModelFallbackEl.classList.remove("hidden");
-    }
+  if (shipModelEl) {
+    shipModelEl.innerHTML = shipSvg(selectedShip.id, tier);
   }
 
   // Stats preview for current ship
