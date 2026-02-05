@@ -776,6 +776,32 @@ canvas#game {
   margin: 6px 0 0 18px;
 }
 
+.infoShips {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.shipCard {
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(0,0,0,0.18);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.shipCard model-viewer {
+  width: 100%;
+  height: 180px;
+}
+
+.shipCard__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
 .fsHint {
   position: absolute;
   left: 50%;
@@ -890,6 +916,33 @@ canvas#game {
   justify-content: space-between;
   gap: 10px;
   font-weight: 700;
+}
+
+.statBars {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.statBarRow {
+  display: grid;
+  grid-template-columns: 70px 1fr;
+  gap: 10px;
+  align-items: center;
+  font-size: 12px;
+  opacity: 0.95;
+}
+
+.statBar {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.1);
+  overflow: hidden;
+}
+
+.statBar__fill {
+  height: 100%;
+  background: linear-gradient(90deg, #40f3ff, #ff7ad9);
 }
 
 .list {

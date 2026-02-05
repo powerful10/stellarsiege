@@ -2,7 +2,8 @@ import bpy
 import math
 import os
 
-OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "public", "game", "models")
+PROJECT_ROOT = os.environ.get("STELLAR_SIEGE_ROOT", r"C:\dev\stellar-siege")
+OUTPUT_DIR = os.path.join(PROJECT_ROOT, "public", "game", "models")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # Basic materials
@@ -14,8 +15,13 @@ def make_mat(name, color, metallic=0.2, roughness=0.35, emission=None, emission_
     bsdf.inputs["Metallic"].default_value = metallic
     bsdf.inputs["Roughness"].default_value = roughness
     if emission:
-        bsdf.inputs["Emission"].default_value = (*emission, 1)
-        bsdf.inputs["Emission Strength"].default_value = emission_strength
+        # Blender 4/5 uses "Emission Color" instead of "Emission"
+        if "Emission" in bsdf.inputs:
+            bsdf.inputs["Emission"].default_value = (*emission, 1)
+        elif "Emission Color" in bsdf.inputs:
+            bsdf.inputs["Emission Color"].default_value = (*emission, 1)
+        if "Emission Strength" in bsdf.inputs:
+            bsdf.inputs["Emission Strength"].default_value = emission_strength
     return mat
 
 MAT_HULL = make_mat("Hull", (0.12, 0.18, 0.35), metallic=0.4, roughness=0.35)
@@ -74,14 +80,17 @@ def build_ship(name, tier=1):
     # export
     filepath = os.path.join(OUTPUT_DIR, f"{name}.glb")
     bpy.ops.export_scene.gltf(filepath=filepath, export_format='GLB', export_apply=True)
+    print("Exported:", filepath)
 
 def main():
-    build_ship("scout", tier=1)
-    build_ship("striker", tier=2)
-    build_ship("ranger", tier=3)
-    build_ship("astra", tier=3)
-    build_ship("warden", tier=4)
-    build_ship("valkyrie", tier=5)
+    print("Export folder:", os.path.abspath(OUTPUT_DIR))
+    for tier in (1, 2, 3):
+        build_ship(f"scout_t{tier}", tier=tier)
+        build_ship(f"striker_t{tier}", tier=min(3, tier + 1))
+        build_ship(f"ranger_t{tier}", tier=min(4, tier + 1))
+        build_ship(f"astra_t{tier}", tier=min(4, tier + 1))
+        build_ship(f"warden_t{tier}", tier=min(5, tier + 1))
+        build_ship(f"valkyrie_t{tier}", tier=min(5, tier + 2))
 
 if __name__ == "__main__":
     main()

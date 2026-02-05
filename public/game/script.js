@@ -748,13 +748,45 @@ function shipById(id) {
 }
 
 const SHIP_MODELS = {
-  scout: "models/scout.glb",
-  striker: "models/striker.glb",
-  ranger: "models/ranger.glb",
-  astra: "models/astra.glb",
-  warden: "models/warden.glb",
-  valkyrie: "models/valkyrie.glb",
+  scout: ["models/scout_t1.glb", "models/scout_t2.glb", "models/scout_t3.glb"],
+  striker: ["models/striker_t1.glb", "models/striker_t2.glb", "models/striker_t3.glb"],
+  ranger: ["models/ranger_t1.glb", "models/ranger_t2.glb", "models/ranger_t3.glb"],
+  astra: ["models/astra_t1.glb", "models/astra_t2.glb", "models/astra_t3.glb"],
+  warden: ["models/warden_t1.glb", "models/warden_t2.glb", "models/warden_t3.glb"],
+  valkyrie: ["models/valkyrie_t1.glb", "models/valkyrie_t2.glb", "models/valkyrie_t3.glb"],
 };
+
+function upgradeTier(upgrades) {
+  const totalMax = PERM_UPGRADES.reduce((sum, u) => sum + u.max, 0);
+  const total = PERM_UPGRADES.reduce((sum, u) => sum + (upgrades[u.key] || 0), 0);
+  const ratio = totalMax ? total / totalMax : 0;
+  if (ratio >= 0.66) return 2;
+  if (ratio >= 0.33) return 1;
+  return 0;
+}
+
+function maxUpgrades() {
+  const out = {};
+  PERM_UPGRADES.forEach((u) => (out[u.key] = u.max));
+  return out;
+}
+
+function statBars(stats) {
+  const cap = {
+    speed: 380,
+    damage: 2.0,
+    fireRate: 0.08,
+    shieldMax: 180,
+    hullMax: 180,
+  };
+  return [
+    { label: "Speed", value: Math.min(1, stats.speed / cap.speed) },
+    { label: "Damage", value: Math.min(1, stats.damage / cap.damage) },
+    { label: "Fire Rate", value: Math.min(1, cap.fireRate / stats.fireRate) },
+    { label: "Shield", value: Math.min(1, stats.shieldMax / cap.shieldMax) },
+    { label: "Hull", value: Math.min(1, stats.hullMax / cap.hullMax) },
+  ];
+}
 
 function defaultShipUpgrades() {
   return {
@@ -819,10 +851,10 @@ function levelFromXp(xp) {
   return lvl;
 }
 
-function computePermanentStats(shipId) {
+function computePermanentStats(shipId, upgradesOverride = null, xpOverride = null) {
   const ship = shipById(shipId || SAVE.profile.selectedShipId);
-  const u = ensureShipState(ship.id).upgrades;
-  const pilotLevel = levelFromXp(SAVE.profile.xp);
+  const u = upgradesOverride || ensureShipState(ship.id).upgrades;
+  const pilotLevel = levelFromXp(xpOverride != null ? xpOverride : SAVE.profile.xp);
   const levelBonus = Math.floor((pilotLevel - 1) / 4) * 0.15;
   const eliteMult = 1 + u.elite * 0.06;
   return {
@@ -980,6 +1012,46 @@ infoCloseBtn.addEventListener("click", () => {
 
 infoFullscreenBtn.addEventListener("click", () => {
   toggleFullscreen(document.documentElement);
+});
+
+function renderInfoShips() {
+  const container = infoOverlayEl.querySelector(".infoShips");
+  if (!container) return;
+  container.innerHTML = "";
+  const maxU = maxUpgrades();
+  SHIPS.forEach((s) => {
+    const stats = computePermanentStats(s.id, maxU, 999999);
+    const bars = statBars(stats)
+      .map(
+        (b) => `
+        <div class="statBarRow">
+          <span>${b.label}</span>
+          <div class="statBar"><div class="statBar__fill" style="width:${Math.round(b.value * 100)}%"></div></div>
+        </div>`
+      )
+      .join("");
+    const modelList = SHIP_MODELS[s.id] || [];
+    const modelPath = modelList[2] || modelList[0] || "";
+    const card = document.createElement("div");
+    card.className = "shipCard";
+    card.innerHTML = `
+      <div class="shipCard__header">
+        <strong>${s.name}</strong>
+        <span class="pill">${s.rarity}</span>
+      </div>
+      <model-viewer src="${modelPath}" camera-controls auto-rotate interaction-prompt="none" shadow-intensity="0.6"></model-viewer>
+      <div class="statBars">${bars}</div>
+    `;
+    container.appendChild(card);
+  });
+}
+
+infoBtn.addEventListener("click", () => {
+  renderInfoShips();
+});
+
+sideInfoBtn.addEventListener("click", () => {
+  renderInfoShips();
 });
 
 sideInfoBtn.addEventListener("click", () => {
@@ -1218,8 +1290,10 @@ function renderHangar() {
     shipPickerEl.appendChild(btn);
   });
 
-  // Ship model preview
-  const modelPath = SHIP_MODELS[selectedShip.id];
+  // Ship model preview (tiered by upgrades)
+  const tier = upgradeTier(selectedState.upgrades);
+  const modelList = SHIP_MODELS[selectedShip.id] || [];
+  const modelPath = modelList[tier];
   if (shipModelEl && shipModelFallbackEl) {
     if (modelPath) {
       shipModelEl.src = modelPath;
@@ -1248,9 +1322,19 @@ function renderHangar() {
     ["Elite", `${selectedState.upgrades.elite}/5`],
   ];
 
-  statsBoxEl.innerHTML = statRows
-    .map((r) => `<div class="statRow"><span>${r[0]}</span><span>${r[1]}</span></div>`)
+  const bars = statBars(base)
+    .map(
+      (b) => `
+      <div class="statBarRow">
+        <span>${b.label}</span>
+        <div class="statBar"><div class="statBar__fill" style="width:${Math.round(b.value * 100)}%"></div></div>
+      </div>`
+    )
     .join("");
+
+  statsBoxEl.innerHTML =
+    statRows.map((r) => `<div class="statRow"><span>${r[0]}</span><span>${r[1]}</span></div>`).join("") +
+    `<div class="statBars">${bars}</div>`;
 
   // Upgrades (account-based)
   upgradeListEl.innerHTML = "";
