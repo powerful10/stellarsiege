@@ -163,44 +163,10 @@ canvas#game {
   display: block;
 }
 
-.touchControls__pad {
-  position: absolute;
-  bottom: 18px;
-  left: 18px;
-  display: grid;
-  gap: 6px;
-}
-
-.touchControls__row {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 6px;
-}
-
 .touchControls__actions {
   position: absolute;
   bottom: 20px;
   right: 20px;
-}
-
-.touchBtn__arrow {
-  color: #ffd166;
-  font-size: 18px;
-  line-height: 1;
-}
-
-.touchBtn__label {
-  color: #ffd166;
-  font-size: 11px;
-  font-weight: 900;
-  letter-spacing: 0.08em;
-  margin-top: 2px;
-}
-
-.touchBtn--dir {
-  display: grid;
-  place-items: center;
-  gap: 2px;
 }
 
 .touchBtn--shoot {
@@ -230,15 +196,35 @@ canvas#game {
   user-select: none;
 }
 
-.touchBtn--big {
-  width: 120px;
-  height: 64px;
+.joystick {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  width: 140px;
+  height: 140px;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.joystick__base {
+  width: 140px;
+  height: 140px;
   border-radius: 999px;
-  font-size: 16px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  background: linear-gradient(135deg, rgba(64,243,255,0.9), rgba(255,122,217,0.9));
-  color: #0b0f1f;
+  background: rgba(10, 15, 35, 0.65);
+  border: 1px solid rgba(255,255,255,0.16);
+  box-shadow: inset 0 0 0 8px rgba(64,243,255,0.08), 0 20px 40px rgba(0,0,0,0.35);
+  display: grid;
+  place-items: center;
+}
+
+.joystick__stick {
+  width: 56px;
+  height: 56px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.9);
+  box-shadow: 0 10px 22px rgba(0,0,0,0.35), inset 0 0 0 3px rgba(64,243,255,0.2);
+  transform: translate(0, 0);
+  transition: transform 0.06s linear;
 }
 
 .menuBtn {
@@ -365,6 +351,8 @@ canvas#game {
   gap: 6px;
   scrollbar-width: thin;
   scrollbar-color: rgba(64,243,255,0.4) rgba(0,0,0,0.2);
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
 }
 
 .sideMenu button {
@@ -527,6 +515,8 @@ canvas#game {
   border-radius: 18px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: 0 25px 60px rgba(0, 0, 0, 0.45);
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
 }
 
 .panel--wide {
@@ -720,6 +710,8 @@ canvas#game {
   max-height: 390px;
   overflow: auto;
   padding-right: 6px;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
 }
 
 .upgRow {
@@ -800,6 +792,8 @@ canvas#game {
 .leaderboard {
   display: grid;
   gap: 6px;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
 }
 
 .lbRow {
@@ -876,6 +870,8 @@ canvas#game {
   display: grid;
   gap: 10px;
   margin-top: 12px;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
 }
 
 .missionRow {
@@ -1014,6 +1010,28 @@ canvas#game {
   .pill {
     font-size: 10px;
   }
+
+  .joystick {
+    width: 120px;
+    height: 120px;
+    left: 12px;
+    bottom: 12px;
+  }
+
+  .joystick__base {
+    width: 120px;
+    height: 120px;
+  }
+
+  .joystick__stick {
+    width: 48px;
+    height: 48px;
+  }
+
+  .touchBtn--shoot {
+    width: 60px;
+    height: 60px;
+  }
 }
 
 .gameRoot {
@@ -1022,6 +1040,14 @@ canvas#game {
   aspect-ratio: 16 / 10;
   border-radius: 18px;
   box-shadow: 0 30px 70px rgba(0,0,0,0.4);
+}
+
+@media (pointer: coarse) {
+  .panel,
+  .panel--wide {
+    max-height: 86vh;
+    overflow-y: auto;
+  }
 }
 
 .gameRoot:fullscreen {

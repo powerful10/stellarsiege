@@ -133,11 +133,9 @@ const topCreditsEl = must("topCredits");
 const topCrystalsEl = must("topCrystals");
 
 // Touch controls
-const touchUpBtn = must("touchUp");
-const touchDownBtn = must("touchDown");
-const touchLeftBtn = must("touchLeft");
-const touchRightBtn = must("touchRight");
 const touchShootBtn = must("touchShoot");
+const joystickBaseEl = must("joyBase");
+const joystickStickEl = must("joyStick");
 const touchControlsEl = document.querySelector(".touchControls");
 
 // Account overlay
@@ -325,7 +323,6 @@ function setState(next) {
   setPaused(next !== STATE.RUN);
   updateTouchControlsVisibility();
   updateRotateOverlay();
-if (touchControlsEl) touchControlsEl.classList.add("hidden");
 }
 
 function setTopAuthUi({ signedIn, displayName, photoUrl }) {
@@ -508,11 +505,67 @@ function bindTouchBtn(el, onDown, onUp) {
   el.addEventListener("pointerleave", up);
 }
 
-bindTouchBtn(touchUpBtn, () => (input.up = true), () => (input.up = false));
-bindTouchBtn(touchDownBtn, () => (input.down = true), () => (input.down = false));
-bindTouchBtn(touchLeftBtn, () => (input.left = true), () => (input.left = false));
-bindTouchBtn(touchRightBtn, () => (input.right = true), () => (input.right = false));
 bindTouchBtn(touchShootBtn, () => (input.shooting = true), () => (input.shooting = false));
+
+function setupJoystick() {
+  if (!joystickBaseEl || !joystickStickEl) return;
+  let activeId = null;
+  let center = { x: 0, y: 0 };
+  let radius = 1;
+  const dead = 0.2;
+
+  const resetInput = () => {
+    input.up = false;
+    input.down = false;
+    input.left = false;
+    input.right = false;
+  };
+
+  const updateStick = (dx, dy) => {
+    const max = radius * 0.45;
+    const len = Math.hypot(dx, dy) || 1;
+    const clamped = len > max;
+    const fx = clamped ? (dx / len) * max : dx;
+    const fy = clamped ? (dy / len) * max : dy;
+    joystickStickEl.style.transform = `translate(${fx}px, ${fy}px)`;
+
+    const nx = fx / max;
+    const ny = fy / max;
+    input.left = nx < -dead;
+    input.right = nx > dead;
+    input.up = ny < -dead;
+    input.down = ny > dead;
+  };
+
+  const onDown = (e) => {
+    if (activeId !== null) return;
+    activeId = e.pointerId;
+    joystickBaseEl.setPointerCapture(activeId);
+    const rect = joystickBaseEl.getBoundingClientRect();
+    center = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    radius = rect.width / 2;
+    updateStick(e.clientX - center.x, e.clientY - center.y);
+  };
+
+  const onMove = (e) => {
+    if (activeId !== e.pointerId) return;
+    updateStick(e.clientX - center.x, e.clientY - center.y);
+  };
+
+  const onUp = (e) => {
+    if (activeId !== e.pointerId) return;
+    activeId = null;
+    resetInput();
+    joystickStickEl.style.transform = "translate(0, 0)";
+  };
+
+  joystickBaseEl.addEventListener("pointerdown", onDown);
+  window.addEventListener("pointermove", onMove);
+  window.addEventListener("pointerup", onUp);
+  window.addEventListener("pointercancel", onUp);
+}
+
+setupJoystick();
 
 canvas.addEventListener(
   "touchstart",

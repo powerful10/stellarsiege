@@ -92,24 +92,9 @@
     </div>
 
     <div class="touchControls" aria-label="Touch controls">
-      <div class="touchControls__pad">
-        <button class="touchBtn touchBtn--dir" id="touchUp" aria-label="Move up">
-          <span class="touchBtn__arrow">?</span>
-          <span class="touchBtn__label">T</span>
-        </button>
-        <div class="touchControls__row">
-          <button class="touchBtn touchBtn--dir" id="touchLeft" aria-label="Move left">
-            <span class="touchBtn__arrow">?</span>
-            <span class="touchBtn__label">L</span>
-          </button>
-          <button class="touchBtn touchBtn--dir" id="touchDown" aria-label="Move down">
-            <span class="touchBtn__arrow">?</span>
-            <span class="touchBtn__label">B</span>
-          </button>
-          <button class="touchBtn touchBtn--dir" id="touchRight" aria-label="Move right">
-            <span class="touchBtn__arrow">?</span>
-            <span class="touchBtn__label">R</span>
-          </button>
+      <div class="joystick" id="joy">
+        <div class="joystick__base" id="joyBase" aria-hidden="true">
+          <div class="joystick__stick" id="joyStick"></div>
         </div>
       </div>
       <div class="touchControls__actions">
