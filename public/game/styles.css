@@ -686,6 +686,32 @@ canvas#game {
   display: none;
 }
 
+.fsHint {
+  position: absolute;
+  left: 50%;
+  top: 12px;
+  transform: translateX(-50%);
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(10, 15, 35, 0.9);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: rgba(255,255,255,0.95);
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  z-index: 8;
+  pointer-events: none;
+  box-shadow: 0 12px 28px rgba(0,0,0,0.35);
+}
+
+@media (max-width: 720px) {
+  .fsHint {
+    top: 8px;
+    font-size: 11px;
+    padding: 6px 10px;
+  }
+}
+
 .panelTop {
   display: flex;
   align-items: center;

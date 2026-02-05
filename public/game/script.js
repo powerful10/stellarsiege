@@ -111,6 +111,7 @@ const gameoverTitleEl = must("gameoverTitle");
 const gameoverSubEl = must("gameoverSub");
 const restartBtn = must("restartBtn");
 const toMenuBtn = must("toMenuBtn");
+const fsHintEl = must("fsHint");
 
 // Hamburger menu
 const menuBtn = must("menuBtn");
@@ -258,6 +259,17 @@ function setFullscreenButtonLabel() {
   const label = document.fullscreenElement ? "Exit Fullscreen" : "Fullscreen";
   if (menuFullscreenBtn) menuFullscreenBtn.textContent = label;
   if (sideFullscreenBtn) sideFullscreenBtn.textContent = label;
+}
+
+let fsHintTimer = null;
+function showFullscreenHint() {
+  if (!fsHintEl) return;
+  if (document.fullscreenElement) return;
+  fsHintEl.classList.remove("hidden");
+  if (fsHintTimer) clearTimeout(fsHintTimer);
+  fsHintTimer = setTimeout(() => {
+    fsHintEl.classList.add("hidden");
+  }, 3000);
 }
 
 function setState(next) {
@@ -2772,6 +2784,7 @@ function guardStartRun(mode, options) {
 
 function startRun(mode, options = {}) {
   if (!guardStartRun(mode, options)) return;
+  showFullscreenHint();
   activeMode = mode;
 
   // If a user selected a locked ship, fall back to Scout.
