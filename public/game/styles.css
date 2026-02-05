@@ -375,6 +375,13 @@ canvas#game {
   background: rgba(64,243,255,0.12);
 }
 
+@media (pointer: fine) {
+  #menuFullscreenBtn,
+  #sideFullscreenBtn {
+    display: none;
+  }
+}
+
 .hud {
   position: absolute;
   top: 0;
