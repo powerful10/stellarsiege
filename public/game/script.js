@@ -743,6 +743,15 @@ const SHIPS = [
   },
 ];
 
+const SHIP_STYLES = {
+  scout: { main: "#1de2c4", accent: "#0ea5e9" },
+  striker: { main: "#60a5fa", accent: "#93c5fd" },
+  ranger: { main: "#34d399", accent: "#a7f3d0" },
+  astra: { main: "#f472b6", accent: "#fbcfe8" },
+  warden: { main: "#f59e0b", accent: "#fde68a" },
+  valkyrie: { main: "#f97316", accent: "#fed7aa" },
+};
+
 function shipById(id) {
   return SHIPS.find((s) => s.id === id) || SHIPS[0];
 }
@@ -3688,19 +3697,7 @@ function drawDrones() {
 }
 
 function drawPlayerShip() {
-  if (!player.alive) return;
-  drawShip(player.x, player.y, player.angle, "#1de2c4", "#0ea5e9", 1);
-
-  const s = clamp(player.shield / player.shieldMax, 0, 1);
-  if (s > 0.02) {
-    ctx.globalCompositeOperation = "lighter";
-    ctx.strokeStyle = `rgba(64, 243, 255, ${0.12 + s * 0.25})`;
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.arc(player.x, player.y, 28, 0, TAU);
-    ctx.stroke();
-    ctx.globalCompositeOperation = "source-over";
-  }
+  drawFancyPlayerShip();
 }
 
 function render(dt) {
@@ -3751,6 +3748,86 @@ setFullscreenButtonLabel();
 
 if (menuFullscreenBtn) {
   menuFullscreenBtn.addEventListener("click", () => toggleFullscreen(document.documentElement));
+}
+
+function drawFancyPlayerShip() {
+  if (!player.alive) return;
+  const selected = shipById(SAVE.profile.selectedShipId);
+  const style = SHIP_STYLES[selected.id] || { main: "#1de2c4", accent: "#0ea5e9" };
+  const tier = upgradeTier(ensureShipState(selected.id).upgrades);
+
+  ctx.save();
+  ctx.translate(player.x, player.y);
+  ctx.rotate(player.angle);
+
+  // Glow
+  ctx.fillStyle = "rgba(64,243,255,0.16)";
+  ctx.beginPath();
+  ctx.arc(0, 0, 26 + tier * 2, 0, TAU);
+  ctx.fill();
+
+  // Hull (pseudo‑3D with gradient)
+  const grad = ctx.createLinearGradient(-18, -8, 18, 12);
+  grad.addColorStop(0, style.main);
+  grad.addColorStop(1, "#0b142c");
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.moveTo(22 + tier * 2, 0);
+  ctx.lineTo(-10, -12);
+  ctx.lineTo(-18, 0);
+  ctx.lineTo(-10, 12);
+  ctx.closePath();
+  ctx.fill();
+
+  // Wings
+  ctx.fillStyle = style.accent;
+  ctx.beginPath();
+  ctx.moveTo(2, -14 - tier);
+  ctx.lineTo(-16 - tier, -20 - tier);
+  ctx.lineTo(-8 - tier, -6);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.moveTo(2, 14 + tier);
+  ctx.lineTo(-16 - tier, 20 + tier);
+  ctx.lineTo(-8 - tier, 6);
+  ctx.closePath();
+  ctx.fill();
+
+  // Cockpit
+  ctx.fillStyle = "rgba(255,255,255,0.9)";
+  ctx.beginPath();
+  ctx.arc(6, 0, 4 + tier, 0, TAU);
+  ctx.fill();
+
+  // Extra fins for higher tiers
+  if (tier >= 1) {
+    ctx.fillStyle = "rgba(255,255,255,0.35)";
+    ctx.fillRect(-6, -3, 10, 1.6);
+    ctx.fillRect(-6, 1.4, 10, 1.6);
+  }
+  if (tier >= 2) {
+    ctx.fillStyle = "rgba(255,122,217,0.6)";
+    ctx.beginPath();
+    ctx.moveTo(-18, 0);
+    ctx.lineTo(-26, -6);
+    ctx.lineTo(-26, 6);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  ctx.restore();
+
+  // Shield ring
+  const s = clamp(player.shield / player.shieldMax, 0, 1);
+  if (s > 0.01) {
+    ctx.strokeStyle = `rgba(64,243,255, ${0.3 + 0.4 * s})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, 28, 0, TAU);
+    ctx.stroke();
+  }
 }
 if (sideFullscreenBtn) {
   sideFullscreenBtn.addEventListener("click", () => toggleFullscreen(document.documentElement));
