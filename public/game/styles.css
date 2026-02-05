@@ -54,10 +54,14 @@ body {
   letter-spacing: 0.05em;
 }
 
+:root {
+  --game-w: min(96vw, calc(96vh / 0.625));
+  --game-h: min(calc(96vw * 0.625), 96vh);
+}
+
 canvas#game {
-  width: min(96vw, 960px);
-  height: auto;
-  aspect-ratio: 16 / 10;
+  width: 100%;
+  height: 100%;
   border-radius: 18px;
   border: 1px solid rgba(255,255,255,0.08);
   box-shadow: 0 30px 70px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255,255,255,0.05) inset;
@@ -66,8 +70,8 @@ canvas#game {
 
 .ui {
   position: absolute;
-  width: 960px;
-  height: 600px;
+  width: 100%;
+  height: 100%;
   pointer-events: none;
 }
 
@@ -910,11 +914,6 @@ canvas#game {
 }
 
 @media (max-width: 980px) {
-  canvas#game, .ui {
-    width: 94vw;
-    height: calc(94vw * 0.625);
-  }
-
   .brandImg {
     width: min(56vw, 280px);
   }
@@ -1034,9 +1033,46 @@ canvas#game {
   }
 }
 
+@media (max-height: 700px) {
+  .panel {
+    padding: 16px 18px;
+  }
+
+  .panel h1 {
+    font-size: 34px;
+  }
+
+  .panel h2 {
+    font-size: 26px;
+  }
+
+  .menuGrid button,
+  .panel button {
+    padding: 10px 12px;
+  }
+}
+
+@media (pointer: coarse) {
+  body {
+    overflow: hidden;
+    touch-action: none;
+  }
+
+  .panel,
+  .panel--wide,
+  .sideMenu,
+  .list,
+  .leaderboard,
+  .missionList {
+    overflow: hidden;
+    max-height: 90vh;
+  }
+}
+
 .gameRoot {
   position: relative;
-  width: min(96vw, 960px);
+  width: var(--game-w);
+  height: var(--game-h);
   aspect-ratio: 16 / 10;
   border-radius: 18px;
   box-shadow: 0 30px 70px rgba(0,0,0,0.4);
