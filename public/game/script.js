@@ -1,4 +1,4 @@
-/*
+﻿/*
   Stellar Siege - Roguelite Arena
 
   Your clicks weren't working because `script.js` was missing from the folder,
@@ -358,7 +358,7 @@ function renderAccountPanel() {
   }
 
   if (!CLOUD.user) {
-    accountBoxEl.innerHTML = `<div class="fine">You are not signed in. Use “Sign in with Google”.</div>`;
+    accountBoxEl.innerHTML = `<div class="fine">You are not signed in. Use вЂњSign in with GoogleвЂќ.</div>`;
     accountSyncBtn.disabled = true;
     accountSignOutBtn.disabled = true;
     return;
@@ -382,11 +382,13 @@ function renderAccountPanel() {
   const items = [
     { label: "Name", value: `${(u.displayName || SAVE.profile.name || "Pilot").slice(0, 40)}` },
     { label: "Email", value: `${(u.email || "<small>(not available)</small>")}` },
-    { label: "UID", value: `${String(u.uid || "").slice(0, 10)}<small>…</small>` },
+    { label: "UID", value: `${String(u.uid || "").slice(0, 10)}<small>вЂ¦</small>` },
     { label: "Level", value: `${levelFromXp(SAVE.profile.xp)}` },
     { label: "Credits", value: `${SAVE.profile.credits}` },
     { label: "Crystals", value: `${SAVE.profile.crystals}` },
     { label: "Ships", value: `${ownedShips}/${totalShips} owned` },
+    { label: "Games", value: `${SAVE.profile.gamesPlayed || 0} total` },
+    { label: "Online W/L", value: `${SAVE.profile.onlineWins || 0}/${SAVE.profile.onlineLosses || 0}` },
     { label: "Best Score", value: `${SAVE.profile.bestScore}` },
   ];
 
@@ -618,6 +620,12 @@ function defaultSave() {
       bestWave: 1,
       campaignUnlocked: 1,
       selectedShipId: "scout",
+      gamesPlayed: 0,
+      gamesSurvival: 0,
+      gamesCampaign: 0,
+      onlineGames: 0,
+      onlineWins: 0,
+      onlineLosses: 0,
       updatedAt: 0,
     },
     ships: {},
@@ -887,6 +895,11 @@ function migrateSave() {
 
   if (!SAVE.profile.updatedAt) SAVE.profile.updatedAt = 0;
   if (!Number.isFinite(Number(SAVE.profile.crystalsShadow))) SAVE.profile.crystalsShadow = SAVE.profile.crystals || 0;
+  const statKeys = ["gamesPlayed", "gamesSurvival", "gamesCampaign", "onlineGames", "onlineWins", "onlineLosses"];
+  statKeys.forEach((key) => {
+    const value = Number(SAVE.profile[key] || 0);
+    SAVE.profile[key] = Number.isFinite(value) && value >= 0 ? Math.floor(value) : 0;
+  });
   saveNow();
 }
 
@@ -1509,7 +1522,7 @@ function renderLeaderboard(which) {
           <div class="lbRank">#${i + 1}</div>
           <div>
             <div class="lbName">${e.name} <span style="opacity:.6">(${mode})</span></div>
-            <div style="opacity:.7; font-size:12px">Wave ${e.wave} · ${e.date}</div>
+            <div style="opacity:.7; font-size:12px">Wave ${e.wave} В· ${e.date}</div>
           </div>
           <div class="lbScore">${e.score}</div>
         </div>
@@ -1708,6 +1721,12 @@ function computeLocalSnapshot() {
     bestWave: Number(SAVE.profile.bestWave || 1),
     campaignUnlocked: Number(SAVE.profile.campaignUnlocked || 1),
     selectedShipId: SAVE.profile.selectedShipId || "scout",
+    gamesPlayed: Number(SAVE.profile.gamesPlayed || 0),
+    gamesSurvival: Number(SAVE.profile.gamesSurvival || 0),
+    gamesCampaign: Number(SAVE.profile.gamesCampaign || 0),
+    onlineGames: Number(SAVE.profile.onlineGames || 0),
+    onlineWins: Number(SAVE.profile.onlineWins || 0),
+    onlineLosses: Number(SAVE.profile.onlineLosses || 0),
     updatedAt: nowMs(),
   };
   return {
@@ -1784,17 +1803,56 @@ async function cloudPush() {
   await ref.set(clamped, { merge: true });
 }
 
-async function cloudSubmitLeaderboard(entry) {
+function leaderboardRankComparator(a, b) {
+  if ((b.onlineWins || 0) !== (a.onlineWins || 0)) return (b.onlineWins || 0) - (a.onlineWins || 0);
+  if ((a.onlineLosses || 0) !== (b.onlineLosses || 0)) return (a.onlineLosses || 0) - (b.onlineLosses || 0);
+  if ((b.xp || 0) !== (a.xp || 0)) return (b.xp || 0) - (a.xp || 0);
+  if ((b.onlineGames || 0) !== (a.onlineGames || 0)) return (b.onlineGames || 0) - (a.onlineGames || 0);
+  if ((b.bestScore || 0) !== (a.bestScore || 0)) return (b.bestScore || 0) - (a.bestScore || 0);
+  return String(a.name || "").localeCompare(String(b.name || ""));
+}
+
+async function cloudUpdatePlayerRanking(entry, reason) {
   if (!CLOUD.enabled || !CLOUD.firestore || !CLOUD.user) return;
-  // Keep per-mode boards to simplify indexing/rules
-  const col = CLOUD.firestore.collection("leaderboard_survival");
-  await col.add({
-    uid: CLOUD.user.uid,
-    name: CLOUD.user.displayName || SAVE.profile.name,
-    score: entry.score,
-    wave: entry.wave,
-    date: entry.date,
-    createdAt: nowMs(),
+  const uid = CLOUD.user.uid;
+  const isOnlineDuel = run.mode === MODE.DUEL && run.duel && run.duel.kind === "online";
+  const ref = CLOUD.firestore.collection("leaderboard_players").doc(uid);
+  const mode = run.mode;
+
+  await CLOUD.firestore.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const prev = snap.exists ? snap.data() || {} : {};
+
+    const gamesPlayed = Number(prev.gamesPlayed || 0) + 1;
+    const gamesSurvival = Number(prev.gamesSurvival || 0) + (mode === MODE.SURVIVAL ? 1 : 0);
+    const gamesCampaign = Number(prev.gamesCampaign || 0) + (mode === MODE.CAMPAIGN ? 1 : 0);
+    const onlineGames = Number(prev.onlineGames || 0) + (isOnlineDuel ? 1 : 0);
+    const onlineWins = Number(prev.onlineWins || 0) + (isOnlineDuel && reason === "duel_win" ? 1 : 0);
+    const onlineLosses = Number(prev.onlineLosses || 0) + (isOnlineDuel && reason === "duel_loss" ? 1 : 0);
+    const points = onlineWins * 3;
+    const winRate = onlineGames > 0 ? onlineWins / onlineGames : 0;
+
+    tx.set(
+      ref,
+      {
+        uid,
+        name: (CLOUD.user.displayName || SAVE.profile.name || "Pilot").slice(0, 40),
+        email: (CLOUD.user.email || "").slice(0, 80),
+        gamesPlayed,
+        gamesSurvival,
+        gamesCampaign,
+        onlineGames,
+        onlineWins,
+        onlineLosses,
+        points,
+        winRate,
+        xp: Number(SAVE.profile.xp || 0),
+        bestScore: Math.max(Number(prev.bestScore || 0), Number(entry.score || 0), Number(SAVE.profile.bestScore || 0)),
+        bestWave: Math.max(Number(prev.bestWave || 1), Number(entry.wave || 1), Number(SAVE.profile.bestWave || 1)),
+        updatedAt: nowMs(),
+      },
+      { merge: true }
+    );
   });
 }
 
@@ -1810,32 +1868,47 @@ async function renderGlobalLeaderboard() {
     return;
   }
 
-  leaderboardListEl.innerHTML = `<div class="fine">Loading global leaderboard…</div>`;
+  leaderboardListEl.innerHTML = `<div class="fine">Loading global leaderboard...</div>`;
   try {
     const q = await CLOUD.firestore
-      .collection("leaderboard_survival")
-      .orderBy("score", "desc")
-      .limit(10)
+      .collection("leaderboard_players")
+      .orderBy("onlineWins", "desc")
+      .limit(120)
       .get();
-    const rows = q.docs.map((d) => d.data());
+    const rows = q.docs
+      .map((d) => d.data() || {})
+      .filter((d) => Number(d.gamesPlayed || 0) > 0)
+      .sort(leaderboardRankComparator)
+      .slice(0, 25);
     if (rows.length === 0) {
-      leaderboardListEl.innerHTML = `<div class="fine">No global scores yet. Play Survival and finish a run.</div>`;
+      leaderboardListEl.innerHTML = `<div class="fine">No ranked players yet. Finish matches to appear here.</div>`;
       return;
     }
     leaderboardListEl.innerHTML = rows
       .map((e, i) => {
+        const wins = Number(e.onlineWins || 0);
+        const losses = Number(e.onlineLosses || 0);
+        const onlineGames = Number(e.onlineGames || 0);
+        const gamesPlayed = Number(e.gamesPlayed || 0);
+        const xp = Number(e.xp || 0);
+        const points = Number(e.points || wins * 3);
+        const name = String(e.name || "Pilot").slice(0, 40);
+        const email = e.email ? String(e.email).slice(0, 42) : "";
         return `
           <div class="lbRow">
             <div class="lbRank">#${i + 1}</div>
             <div>
-              <div class="lbName">${e.name || "Pilot"} <span style="opacity:.6">(S)</span></div>
-              <div style="opacity:.7; font-size:12px">Wave ${e.wave || 1}</div>
+              <div class="lbName">${name}${email ? ` <span style="opacity:.55;font-size:12px">${email}</span>` : ""}</div>
+              <div style="opacity:.72; font-size:12px">W ${wins} · L ${losses} · Online ${onlineGames} · Games ${gamesPlayed} · XP ${xp}</div>
             </div>
-            <div class="lbScore">${e.score || 0}</div>
+            <div class="lbScore">${points} pts</div>
           </div>
         `;
       })
       .join("");
+    leaderboardListEl.innerHTML =
+      `<div class="fine" style="margin-bottom:8px">Ranking order: Wins desc, Losses asc, XP desc, Online games desc, Best score desc.</div>` +
+      leaderboardListEl.innerHTML;
   } catch (err) {
     console.warn("[CLOUD] leaderboard load failed", err);
     leaderboardListEl.innerHTML = `<div class="fine">Failed to load global leaderboard.</div>`;
@@ -2055,7 +2128,7 @@ function missionSummary(mission) {
       if (o.type === "no_shoot") return `No shooting (${o.seconds}s)`;
       return "Objective";
     })
-    .join(" · ");
+    .join(" В· ");
 }
 
 function renderCampaignMissions() {
@@ -2075,9 +2148,9 @@ function renderCampaignMissions() {
       <div class="missionDesc">${m.desc}</div>
       <div class="missionBadge">
         <span>${missionSummary(m)}</span>
-        <span style="opacity:.65">·</span>
+        <span style="opacity:.65">В·</span>
         <span>Reward ~${500 + m.id * 120} credits</span>
-        <span style="opacity:.65">·</span>
+        <span style="opacity:.65">В·</span>
         <span>${isCompleted ? "Completed" : isUnlocked ? "Unlocked" : "Locked"}</span>
       </div>
     `;
@@ -2136,7 +2209,7 @@ function campaignObjectiveStatusText() {
     return "Objective";
   });
 
-  return parts.join(" · ");
+  return parts.join(" В· ");
 }
 
 function isCampaignObjectiveComplete(obj) {
@@ -2376,7 +2449,7 @@ function onlineAttachRoomListeners() {
     const guestReady = Boolean(v.players && v.players.guest && v.players.guest.uid);
     const status = v.status || "waiting";
     const who = hostReady && guestReady ? "2/2 players" : hostReady ? "1/2 players" : "0/2 players";
-    onlineHintEl.textContent = `Room ${ONLINE_SESSION.roomCode} · ${who} · ${status}`;
+    onlineHintEl.textContent = `Room ${ONLINE_SESSION.roomCode} В· ${who} В· ${status}`;
 
     if (run.active && run.mode === MODE.DUEL && run.duel.kind === "online") {
       run.duel.localLabel = onlinePlayerLabel(players[ONLINE_SESSION.role], "You");
@@ -2455,7 +2528,7 @@ async function onlineStartDuel() {
   }
 
   if (ONLINE_SESSION.role !== "host") {
-    onlineHintEl.textContent = "Waiting for host to start the duel…";
+    onlineHintEl.textContent = "Waiting for host to start the duelвЂ¦";
     return;
   }
 
@@ -3042,6 +3115,14 @@ function endRun(reason) {
     // Shadow must never be below the actual balance after spending/earning.
     SAVE.profile.crystalsShadow = Math.max(SAVE.profile.crystalsShadow || 0, SAVE.profile.crystals);
     SAVE.profile.xp += xp;
+    SAVE.profile.gamesPlayed = Number(SAVE.profile.gamesPlayed || 0) + 1;
+    if (run.mode === MODE.SURVIVAL) SAVE.profile.gamesSurvival = Number(SAVE.profile.gamesSurvival || 0) + 1;
+    if (run.mode === MODE.CAMPAIGN) SAVE.profile.gamesCampaign = Number(SAVE.profile.gamesCampaign || 0) + 1;
+    if (run.mode === MODE.DUEL && run.duel && run.duel.kind === "online") {
+      SAVE.profile.onlineGames = Number(SAVE.profile.onlineGames || 0) + 1;
+      if (reason === "duel_win") SAVE.profile.onlineWins = Number(SAVE.profile.onlineWins || 0) + 1;
+      if (reason === "duel_loss") SAVE.profile.onlineLosses = Number(SAVE.profile.onlineLosses || 0) + 1;
+    }
 
     if (run.score > SAVE.profile.bestScore) SAVE.profile.bestScore = Math.floor(run.score);
     if (run.wave > SAVE.profile.bestWave) SAVE.profile.bestWave = run.wave;
@@ -3057,9 +3138,7 @@ function endRun(reason) {
     // Optional: cloud sync
     if (CLOUD.enabled && CLOUD.user) {
       cloudPush().catch((err) => console.warn("[CLOUD] save failed", err));
-      if (run.mode === MODE.SURVIVAL) {
-        cloudSubmitLeaderboard(entry).catch((err) => console.warn("[CLOUD] leaderboard submit failed", err));
-      }
+      cloudUpdatePlayerRanking(entry, reason).catch((err) => console.warn("[CLOUD] ranking update failed", err));
     }
   }
 
@@ -3252,16 +3331,16 @@ function updateHud() {
   } else if (run.mode === MODE.DUEL) {
     if (run.duel && run.duel.kind === "online") {
       const opp = entities.enemies.find((e) => e.type === "pvp");
-      const hp = opp ? `${Math.max(0, Math.ceil(opp.hp))}/${Math.ceil(opp.maxHp)}` : "—";
+      const hp = opp ? `${Math.max(0, Math.ceil(opp.hp))}/${Math.ceil(opp.maxHp)}` : "вЂ”";
       objectiveEl.textContent = `Win: reduce opponent HP to 0 (${hp})`;
     } else {
       const duelist = entities.enemies.find((e) => e.type === "duelist");
-      const hp = duelist ? `${Math.max(0, Math.ceil(duelist.hp))}/${Math.ceil(duelist.maxHp)}` : "—";
+      const hp = duelist ? `${Math.max(0, Math.ceil(duelist.hp))}/${Math.ceil(duelist.maxHp)}` : "вЂ”";
       objectiveEl.textContent = `Win: reduce duelist HP to 0 (${hp})`;
     }
   } else {
     const nextBoss = run.bossAlive ? "Boss fight!" : `Next boss: W${Math.ceil(run.wave / 5) * 5}`;
-    objectiveEl.textContent = `Survive · ${nextBoss}`;
+    objectiveEl.textContent = `Survive В· ${nextBoss}`;
   }
 
   const shieldPct = player.shieldMax > 0 ? player.shield / player.shieldMax : 0;
@@ -3999,7 +4078,7 @@ function drawFancyPlayerShip() {
   ctx.arc(0, 0, 26 + tier * 2, 0, TAU);
   ctx.fill();
 
-  // Hull (pseudo‑3D with gradient)
+  // Hull (pseudoвЂ‘3D with gradient)
   const grad = ctx.createLinearGradient(-18, -8, 18, 12);
   grad.addColorStop(0, style.main);
   grad.addColorStop(1, "#0b142c");
@@ -4112,3 +4191,5 @@ try {
 }
 
 requestAnimationFrame(gameLoop);
+
+
