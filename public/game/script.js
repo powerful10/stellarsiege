@@ -1819,30 +1819,43 @@ async function ensureUniqueUsernameForAccount(interactive = false) {
   usernameEnsureInFlight = (async () => {
     const userRef = cloudDocRef();
     let remoteName = "";
+    let remoteNorm = "";
+    const uid = CLOUD.user.uid;
     try {
       const snap = await userRef.get();
       if (snap.exists) {
         const data = snap.data() || {};
         const profile = data.profile || {};
         if (typeof profile.name === "string") remoteName = cleanUsernameInput(profile.name);
+        if (typeof profile.usernameNormalized === "string") remoteNorm = normalizeUsername(profile.usernameNormalized);
       }
     } catch {
       // ignore fetch failure and fallback to local candidate
     }
 
-    if (isValidUsername(remoteName)) {
-      SAVE.profile.name = remoteName;
-      SAVE.profile.updatedAt = nowMs();
-      saveNow();
-      updateTopBar();
-      CLOUD.usernameReady = true;
-      return true;
+    const remoteLooksValid =
+      isValidUsername(remoteName) && remoteNorm && remoteNorm === normalizeUsername(remoteName);
+    if (remoteLooksValid) {
+      try {
+        const unameSnap = await CLOUD.firestore.collection("usernames").doc(remoteNorm).get();
+        const unameData = unameSnap.exists ? unameSnap.data() || {} : {};
+        if (String(unameData.uid || "") === uid) {
+          SAVE.profile.name = remoteName;
+          SAVE.profile.updatedAt = nowMs();
+          saveNow();
+          updateTopBar();
+          CLOUD.usernameReady = true;
+          return true;
+        }
+      } catch {
+        // fallback to claim/prompt flow
+      }
     }
 
-    let candidate = suggestUsername(SAVE.profile.name || (CLOUD.user && CLOUD.user.displayName) || "pilot");
-    let result = await claimUniqueUsername(candidate);
-    if (result.ok) return true;
+    let candidate = suggestUsername(remoteName || SAVE.profile.name || (CLOUD.user && CLOUD.user.displayName) || "pilot");
     if (!interactive) {
+      const auto = await claimUniqueUsername(candidate);
+      if (auto.ok) return true;
       CLOUD.usernameReady = false;
       return false;
     }
@@ -1862,7 +1875,7 @@ async function ensureUniqueUsernameForAccount(interactive = false) {
         continue;
       }
 
-      result = await claimUniqueUsername(candidate);
+      const result = await claimUniqueUsername(candidate);
       if (result.ok) return true;
       if (result.code === "taken") {
         alert("That username is already taken. Please choose another.");
@@ -1998,7 +2011,7 @@ function leaderboardRankComparator(a, b) {
   if ((b.xp || 0) !== (a.xp || 0)) return (b.xp || 0) - (a.xp || 0);
   if ((b.onlineGames || 0) !== (a.onlineGames || 0)) return (b.onlineGames || 0) - (a.onlineGames || 0);
   if ((b.bestScore || 0) !== (a.bestScore || 0)) return (b.bestScore || 0) - (a.bestScore || 0);
-  return String(a.name || "").localeCompare(String(b.name || ""));
+  return String(a.username || a.name || "").localeCompare(String(b.username || b.name || ""));
 }
 
 async function cloudUpdatePlayerRanking(entry, reason) {
@@ -2029,7 +2042,8 @@ async function cloudUpdatePlayerRanking(entry, reason) {
       ref,
       {
         uid,
-        name: (SAVE.profile.name || "Pilot").slice(0, 40),
+        name: String(CLOUD.user.displayName || "Pilot").slice(0, 40),
+        username: (SAVE.profile.name || "pilot").slice(0, 20),
         gamesPlayed,
         gamesSurvival,
         gamesCampaign,
@@ -2085,11 +2099,12 @@ async function renderGlobalLeaderboard() {
         const xp = Number(e.xp || 0);
         const points = Number(e.points || wins * 3);
         const name = String(e.name || "Pilot").slice(0, 40);
+        const username = String(e.username || e.name || "pilot").slice(0, 20);
         return `
           <div class="lbRow">
             <div class="lbRank">#${i + 1}</div>
             <div>
-              <div class="lbName">${name}</div>
+              <div class="lbName">${name} <span style="opacity:.65">@${username}</span></div>
               <div style="opacity:.72; font-size:12px">W ${wins} · L ${losses} · Online ${onlineGames} · Games ${gamesPlayed} · XP ${xp}</div>
             </div>
             <div class="lbScore">${points} pts</div>
