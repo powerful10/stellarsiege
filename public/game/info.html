@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="styles.css" />
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
 </head>
-<body>
+<body class="infoDoc">
   <div class="layout infoPage">
     <div class="infoPanel">
       <div class="infoHeader">
@@ -33,6 +33,15 @@
           <li><strong>Survival</strong> — Endless waves. Earn credits quickly.</li>
           <li><strong>Campaign</strong> — Mission objectives and unlocks.</li>
           <li><strong>Online Duel</strong> — Competitive matches and best rewards.</li>
+        </ul>
+      </section>
+
+      <section class="infoSection">
+        <h2>Online Duel Win Rule</h2>
+        <ul>
+          <li>You win when your opponent reaches 0 HP first.</li>
+          <li>Ships have <strong>YOU</strong> and <strong>OPP</strong> labels in match.</li>
+          <li>Use room code to connect two signed-in players.</li>
         </ul>
       </section>
 
@@ -86,6 +95,11 @@
         await document.exitFullscreen();
       }
       setLabel();
+    });
+    window.addEventListener("keydown", (e) => {
+      if (String(e.key || "").toLowerCase() !== "f") return;
+      e.preventDefault();
+      fsBtn.click();
     });
     document.addEventListener("fullscreenchange", setLabel);
     setLabel();

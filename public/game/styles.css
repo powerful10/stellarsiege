@@ -34,6 +34,16 @@ body {
   overflow-y: hidden;
 }
 
+body.infoDoc {
+  overflow-y: auto;
+}
+
+body.infoDoc .layout.infoPage {
+  height: auto;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
 .layout {
   display: grid;
   gap: 0;
@@ -947,7 +957,7 @@ canvas#game {
 .list {
   display: grid;
   gap: 10px;
-  max-height: 390px;
+  max-height: 56vh;
   overflow: auto;
   padding-right: 6px;
   -webkit-overflow-scrolling: touch;
@@ -1346,7 +1356,7 @@ body[data-state="run"] .topCenterBrand {
   display: none;
 }
 
-body[data-state="run"] .topRight .balances {
+body[data-state="run"] .topRight {
   display: none;
 }
 

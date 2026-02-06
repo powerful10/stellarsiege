@@ -80,6 +80,7 @@ export default async function handler(req, res) {
       const custom = (payload && payload.meta && payload.meta.custom_data) || {};
       const uid = custom && custom.uid ? custom.uid : null;
       const crystals = Number(custom && custom.crystals ? custom.crystals : 0);
+      const credits = Number(custom && custom.credits ? custom.credits : 0);
 
       const status =
         payload && payload.data && payload.data.attributes ? payload.data.attributes.status : null;
@@ -88,7 +89,7 @@ export default async function handler(req, res) {
         return;
       }
 
-      if (uid && Number.isFinite(crystals) && crystals > 0) {
+      if (uid && ((Number.isFinite(crystals) && crystals > 0) || (Number.isFinite(credits) && credits > 0))) {
         const db = admin.firestore();
         const ref = db.collection("users").doc(uid);
 
@@ -98,6 +99,8 @@ export default async function handler(req, res) {
           const profile = (data && data.profile) || {};
           const current = Number(profile.crystals || 0);
           const next = current + crystals;
+          const currentCredits = Number(profile.credits || 0);
+          const nextCredits = currentCredits + credits;
 
           tx.set(
             ref,
@@ -105,6 +108,7 @@ export default async function handler(req, res) {
               profile: {
                 ...profile,
                 crystals: next,
+                credits: nextCredits,
                 updatedAt: Date.now(),
               },
               ships: (data && data.ships) || {},

@@ -15,6 +15,13 @@ function isTouchDevice() {
   return window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
 }
 
+function shouldUseTouchControls() {
+  const hasFinePointer = window.matchMedia && window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+  if (hasFinePointer) return false;
+  if (!isTouchDevice()) return false;
+  return true;
+}
+
 function lockMobileZoom() {
   if (!isTouchDevice()) return;
   const meta = document.querySelector('meta[name="viewport"]');
@@ -81,6 +88,8 @@ const upgradeListEl = must("upgradeList");
 const shipModelEl = must("shipModel");
 const buy100Btn = must("buy100");
 const buy550Btn = must("buy550");
+const buyCredits10kBtn = must("buyCredits10k");
+const buyCredits65kBtn = must("buyCredits65k");
 const convertBtn = must("convertBtn");
 
 // Leaderboard UI
@@ -212,7 +221,10 @@ let rotateReadyAt = 0;
 
 function updateTouchControlsVisibility() {
   if (!touchControlsEl) return;
-  const show = state === STATE.RUN && (activeMode === MODE.SURVIVAL || activeMode === MODE.CAMPAIGN || activeMode === MODE.DUEL);
+  const show =
+    shouldUseTouchControls() &&
+    state === STATE.RUN &&
+    (activeMode === MODE.SURVIVAL || activeMode === MODE.CAMPAIGN || activeMode === MODE.DUEL);
   touchControlsEl.classList.toggle("touchControls--active", show);
   touchControlsEl.classList.toggle("hidden", !show);
 }
@@ -268,6 +280,12 @@ function setFullscreenButtonLabel() {
   const label = document.fullscreenElement ? "Exit Fullscreen" : "Fullscreen";
   if (menuFullscreenBtn) menuFullscreenBtn.textContent = label;
   if (sideFullscreenBtn) sideFullscreenBtn.textContent = label;
+}
+
+function updateFullscreenButtonVisibility() {
+  const showButtons = shouldUseTouchControls();
+  menuFullscreenBtn.classList.toggle("hidden", !showButtons);
+  sideFullscreenBtn.classList.toggle("hidden", !showButtons);
 }
 
 let fsHintTimer = null;
@@ -386,6 +404,7 @@ function resizeCanvas() {
 }
 
 window.addEventListener("resize", resizeCanvas);
+window.addEventListener("resize", updateFullscreenButtonVisibility);
 resizeCanvas();
 
 const TAU = Math.PI * 2;
@@ -424,6 +443,7 @@ function worldFromEvent(event) {
 }
 
 window.addEventListener("keydown", (event) => {
+  if (shouldIgnoreFullscreenHotkey(event.target)) return;
   if (event.code in keyMap) {
     const action = keyMap[event.code];
     if (action === "shoot") input.shooting = true;
@@ -440,6 +460,7 @@ window.addEventListener("keydown", (event) => {
 });
 
 window.addEventListener("keyup", (event) => {
+  if (shouldIgnoreFullscreenHotkey(event.target)) return;
   if (event.code in keyMap) {
     const action = keyMap[event.code];
     if (action === "shoot") input.shooting = false;
@@ -1112,6 +1133,20 @@ buy550Btn.addEventListener("click", () => {
   });
 });
 
+buyCredits10kBtn.addEventListener("click", () => {
+  startCrystalPurchase("credits_10000").catch((err) => {
+    console.warn("[PAY] failed", err);
+    alert(`Purchase failed: ${err && err.message ? err.message : "unknown error"}`);
+  });
+});
+
+buyCredits65kBtn.addEventListener("click", () => {
+  startCrystalPurchase("credits_65000").catch((err) => {
+    console.warn("[PAY] failed", err);
+    alert(`Purchase failed: ${err && err.message ? err.message : "unknown error"}`);
+  });
+});
+
 convertBtn.addEventListener("click", () => {
   cloudInit();
   if (progressionRequiresAuth() && !isAuthed()) {
@@ -1205,6 +1240,12 @@ signOutBtn.addEventListener("click", () => onlineSignOut());
 createRoomBtn.addEventListener("click", () => onlineCreateRoom());
 joinRoomBtn.addEventListener("click", () => onlineJoinRoom(roomCodeEl.value));
 startDuelBtn.addEventListener("click", () => onlineStartDuel());
+roomCodeEl.addEventListener("input", () => {
+  roomCodeEl.value = String(roomCodeEl.value || "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+    .slice(0, 6);
+});
 
 // Top-right auth + account panel
 topSignInBtn.addEventListener("click", () => {
@@ -1260,7 +1301,20 @@ function renderHangar() {
   // Conversion is allowed only when signed in (or in local dev without Firebase).
   buy100Btn.disabled = !payReady || !authed;
   buy550Btn.disabled = !payReady || !authed;
+  buyCredits10kBtn.disabled = !payReady || !authed;
+  buyCredits65kBtn.disabled = !payReady || !authed;
   convertBtn.disabled = progressionRequiresAuth() ? !authed : false;
+  if (!authed) {
+    buy100Btn.title = "Sign in with Google to purchase.";
+    buy550Btn.title = "Sign in with Google to purchase.";
+    buyCredits10kBtn.title = "Sign in with Google to purchase.";
+    buyCredits65kBtn.title = "Sign in with Google to purchase.";
+  } else {
+    buy100Btn.title = "";
+    buy550Btn.title = "";
+    buyCredits10kBtn.title = "";
+    buyCredits65kBtn.title = "";
+  }
 
   // Ship picker
   shipPickerEl.innerHTML = "";
@@ -1494,8 +1548,16 @@ async function startCrystalPurchase(packId) {
   });
 
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Checkout failed: ${text}`);
+    let message = "Checkout failed.";
+    try {
+      const data = await res.json();
+      if (data && data.error) message = String(data.error);
+      if (res.status === 501) message = "Lemon Squeezy is not connected yet on the server.";
+    } catch {
+      const text = await res.text();
+      if (text) message = `Checkout failed: ${text}`;
+    }
+    throw new Error(message);
   }
 
   const data = await res.json();
@@ -1770,7 +1832,7 @@ function updateAuthUi() {
     setTopAuthUi({ signedIn: true, displayName: CLOUD.user.displayName, photoUrl: CLOUD.user.photoURL });
     return;
   }
-  onlineHintEl.textContent = "Signed in. Create or join a room to play a real online duel.";
+  onlineHintEl.textContent = "Signed in. Create or join a room to play a real online duel. Win by reducing opponent HP to 0.";
   topSignInBtn.disabled = false;
   topSignInBtn.title = "";
   setTopAuthUi({ signedIn: true, displayName: CLOUD.user.displayName, photoUrl: CLOUD.user.photoURL });
@@ -2074,12 +2136,28 @@ const ONLINE_SESSION = {
   opponentState: null,
 };
 
+function onlinePlayerLabel(playerData, fallback = "Pilot") {
+  const fromName = playerData && typeof playerData.name === "string" ? playerData.name.trim() : "";
+  if (fromName) return fromName.slice(0, 20);
+  const fromEmail = playerData && typeof playerData.email === "string" ? playerData.email.trim() : "";
+  if (fromEmail) return fromEmail.slice(0, 20);
+  return String(fallback || "Pilot").slice(0, 20);
+}
+
+function onlineSelfIdentity() {
+  const cloudName = CLOUD.user && (CLOUD.user.displayName || CLOUD.user.email);
+  return {
+    name: String(SAVE.profile.name || cloudName || "Pilot").slice(0, 20),
+    email: CLOUD.user && CLOUD.user.email ? String(CLOUD.user.email).slice(0, 50) : "",
+  };
+}
+
 function onlineEnabled() {
   return Boolean(CLOUD.enabled && CLOUD.user && CLOUD.rtdb);
 }
 
 function randomRoomCode(len = 6) {
-  const alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+  const alphabet = "BCEFGHIJKLMNPQRTUVXYZ23456789";
   let out = "";
   for (let i = 0; i < len; i += 1) out += alphabet[Math.floor(Math.random() * alphabet.length)];
   return out;
@@ -2121,6 +2199,7 @@ async function onlineCreateRoom() {
   const code = randomRoomCode(6);
   const uid = CLOUD.user.uid;
   const shipId = SAVE.profile.selectedShipId || "scout";
+  const identity = onlineSelfIdentity();
 
   onlineLeaveRoom();
 
@@ -2135,7 +2214,8 @@ async function onlineCreateRoom() {
     players: {
       host: {
         uid,
-        name: SAVE.profile.name,
+        name: identity.name,
+        email: identity.email,
         shipId,
         joinedAt: nowMs(),
       },
@@ -2181,6 +2261,7 @@ async function onlineJoinRoom(codeRaw) {
   const data = snap.val() || {};
   const uid = CLOUD.user.uid;
   const shipId = SAVE.profile.selectedShipId || "scout";
+  const identity = onlineSelfIdentity();
 
   if (data.hostUid === uid) {
     ONLINE_SESSION.role = "host";
@@ -2199,13 +2280,19 @@ async function onlineJoinRoom(codeRaw) {
     await ref.child("guestUid").set(uid);
     await ref.child("players/guest").set({
       uid,
-      name: SAVE.profile.name,
+      name: identity.name,
+      email: identity.email,
       shipId,
       joinedAt: nowMs(),
     });
   } else {
     // Re-join as host: ensure host player entry exists.
-    await ref.child("players/host").update({ uid, name: SAVE.profile.name, shipId });
+    await ref.child("players/host").update({
+      uid,
+      name: identity.name,
+      email: identity.email,
+      shipId,
+    });
   }
 
   ONLINE_SESSION.roomCode = code;
@@ -2225,11 +2312,17 @@ function onlineAttachRoomListeners() {
 
   const onRoomValue = (snap) => {
     const v = snap.val() || {};
+    const players = (v && v.players) || {};
     const hostReady = Boolean(v.players && v.players.host && v.players.host.uid);
     const guestReady = Boolean(v.players && v.players.guest && v.players.guest.uid);
     const status = v.status || "waiting";
     const who = hostReady && guestReady ? "2/2 players" : hostReady ? "1/2 players" : "0/2 players";
     onlineHintEl.textContent = `Room ${ONLINE_SESSION.roomCode} · ${who} · ${status}`;
+
+    if (run.active && run.mode === MODE.DUEL && run.duel.kind === "online") {
+      run.duel.localLabel = onlinePlayerLabel(players[ONLINE_SESSION.role], "You");
+      run.duel.opponentLabel = onlinePlayerLabel(players[ONLINE_SESSION.opponentRole], "Opponent");
+    }
 
     if (status === "playing" && state !== STATE.RUN) {
       // Auto-start match when room flips to playing.
@@ -2255,12 +2348,20 @@ function onlineAttachRoomListeners() {
     if (!ev || ev.type !== "bullet") return;
     if (ev.from === ONLINE_SESSION.role) return;
     if (Number(ev.ts || 0) < (ONLINE_SESSION.ignoreEventsBefore || 0)) return;
+    const nx = Number(ev.nx);
+    const ny = Number(ev.ny);
+    const nvx = Number(ev.nvx);
+    const nvy = Number(ev.nvy);
+    const x = Number.isFinite(nx) ? nx * WORLD.width : Number(ev.x);
+    const y = Number.isFinite(ny) ? ny * WORLD.height : Number(ev.y);
+    const vx = Number.isFinite(nvx) ? nvx * WORLD.width : Number(ev.vx);
+    const vy = Number.isFinite(nvy) ? nvy * WORLD.height : Number(ev.vy);
     // Spawn remote bullet locally.
     spawnBullet({
-      x: ev.x,
-      y: ev.y,
-      vx: ev.vx,
-      vy: ev.vy,
+      x: Number.isFinite(x) ? x : 0,
+      y: Number.isFinite(y) ? y : 0,
+      vx: Number.isFinite(vx) ? vx : 0,
+      vy: Number.isFinite(vy) ? vy : 0,
       team: "enemy",
       damage: ev.damage,
       pierce: 0,
@@ -2313,12 +2414,15 @@ function startOnlineDuelFromRoom(room) {
     startRun(MODE.DUEL, { duelKind: "online" });
   }
 
-  // Best-effort: refresh opponent ship color based on their selected ship.
+  const local = room && room.players && room.players[ONLINE_SESSION.role] ? room.players[ONLINE_SESSION.role] : null;
   const opp = room && room.players && room.players[ONLINE_SESSION.opponentRole] ? room.players[ONLINE_SESSION.opponentRole] : null;
+  run.duel.localLabel = onlinePlayerLabel(local, "You");
+  run.duel.opponentLabel = onlinePlayerLabel(opp, "Opponent");
+
+  // Keep enemy visually distinct from local ship.
   const enemy = entities.enemies.find((e) => e.type === "pvp");
-  if (enemy && opp && opp.shipId) {
-    const ship = shipById(opp.shipId);
-    enemy.color = ship && ship.rarity === "Premium" ? "#ff7ad9" : "#40f3ff";
+  if (enemy) {
+    enemy.color = "#ff8f5a";
   }
 }
 
@@ -2337,6 +2441,12 @@ function onlineDuelMaybeSendBullet(b) {
     y: Math.round(b.y * 100) / 100,
     vx: Math.round(b.vx * 100) / 100,
     vy: Math.round(b.vy * 100) / 100,
+    nx: Math.round((b.x / Math.max(1, WORLD.width)) * 10000) / 10000,
+    ny: Math.round((b.y / Math.max(1, WORLD.height)) * 10000) / 10000,
+    nvx: Math.round((b.vx / Math.max(1, WORLD.width)) * 10000) / 10000,
+    nvy: Math.round((b.vy / Math.max(1, WORLD.height)) * 10000) / 10000,
+    ww: Math.round(WORLD.width),
+    wh: Math.round(WORLD.height),
     damage: Math.round(Number(b.damage || 0) * 100) / 100,
     ts: nowMs(),
   });
@@ -2352,6 +2462,10 @@ function onlineDuelMaybeSendState() {
   ONLINE_SESSION.roomRef.child(`players/${ONLINE_SESSION.role}/state`).set({
     x: Math.round(player.x * 100) / 100,
     y: Math.round(player.y * 100) / 100,
+    nx: Math.round((player.x / Math.max(1, WORLD.width)) * 10000) / 10000,
+    ny: Math.round((player.y / Math.max(1, WORLD.height)) * 10000) / 10000,
+    ww: Math.round(WORLD.width),
+    wh: Math.round(WORLD.height),
     a: Math.round(player.angle * 1000) / 1000,
     alive: Boolean(player.alive),
     ts: now,
@@ -2366,8 +2480,10 @@ function onlineDuelApplyOpponentState(dt) {
   if (!enemy) return;
 
   // Smooth remote motion to hide jitter.
-  const tx = Number(st.x);
-  const ty = Number(st.y);
+  const nx = Number(st.nx);
+  const ny = Number(st.ny);
+  const tx = Number.isFinite(nx) ? nx * WORLD.width : Number(st.x);
+  const ty = Number.isFinite(ny) ? ny * WORLD.height : Number(st.y);
   if (Number.isFinite(tx)) enemy.x = lerp(enemy.x, tx, clamp(dt * 10, 0, 1));
   if (Number.isFinite(ty)) enemy.y = lerp(enemy.y, ty, clamp(dt * 10, 0, 1));
 }
@@ -2427,6 +2543,8 @@ const run = {
     roomCode: "",
     role: "",
     opponentRole: "",
+    localLabel: "",
+    opponentLabel: "",
     lastSendAt: 0,
   },
   campaign: {
@@ -2470,9 +2588,9 @@ const player = {
 const PLAYER_BOUND_PAD = 6;
 
 const AD_REWARDS = {
-  survival: { seconds: 20, credits: 150, crystals: 0, xp: 120 },
-  campaign: { seconds: 40, credits: 350, crystals: 1, xp: 260 },
-  duel: { seconds: 60, credits: 700, crystals: 2, xp: 420 },
+  survival: { seconds: 20, credits: 90, crystals: 0, xp: 80 },
+  campaign: { seconds: 40, credits: 220, crystals: 1, xp: 220 },
+  duel: { seconds: 60, credits: 420, crystals: 2, xp: 360 },
 };
 
 const ENEMY_TYPES = {
@@ -2601,6 +2719,8 @@ function resetRun(mode) {
     roomCode: "",
     role: "",
     opponentRole: "",
+    localLabel: "",
+    opponentLabel: "",
     lastSendAt: 0,
   };
   run.campaign = {
@@ -2815,6 +2935,7 @@ function killEnemy(enemy) {
 }
 
 function endRun(reason) {
+  if (reason === "dead" && run.mode === MODE.DUEL) reason = "duel_loss";
   run.active = false;
   player.alive = false;
   onlineDuelReportEnd(reason);
@@ -2822,21 +2943,27 @@ function endRun(reason) {
   const keepRewards = !progressionRequiresAuth() || isAuthed();
 
   // Economy: credits are grindable, crystals are rare (mostly purchases + a small earnable trickle).
-  const baseCredits = Math.floor(run.score * 0.12) + run.wave * 16;
-  const baseXp = Math.floor(run.score * 0.16) + run.wave * 14;
+  const baseCredits = Math.floor(run.score * 0.08) + run.wave * 10;
+  const baseXp = Math.floor(run.score * 0.13) + run.wave * 11;
   let crystals = 0;
-  if (Math.random() < 0.06) crystals = 1;
-  if (run.wave >= 12 && Math.random() < 0.08) crystals += 1;
-  if (reason === "duel_win") crystals += 1;
+  if (run.mode === MODE.SURVIVAL) {
+    if (Math.random() < 0.02) crystals = 1;
+    if (run.wave >= 15 && Math.random() < 0.03) crystals += 1;
+  }
+  if (reason === "duel_win") crystals += 2;
 
   let credits = baseCredits;
   let xp = baseXp;
   let unlockNextMission = false;
   if (run.mode === MODE.CAMPAIGN && run.campaign.completed) {
-    credits += 380 + run.campaign.missionId * 90;
-    xp += 140 + run.campaign.missionId * 30;
+    credits += 260 + run.campaign.missionId * 70;
+    xp += 120 + run.campaign.missionId * 26;
     crystals += 1; // campaign completion always gives a small crystal reward
     unlockNextMission = true;
+  }
+  if (reason === "duel_win") {
+    credits += 220;
+    xp += 120;
   }
 
   const entry = {
@@ -2895,7 +3022,10 @@ function endRun(reason) {
     }
   } else if (reason === "duel_win") {
     gameoverTitleEl.textContent = "Victory!";
-    gameoverSubEl.textContent = "Duel won.";
+    gameoverSubEl.textContent = "Opponent hull reached 0.";
+  } else if (reason === "duel_loss") {
+    gameoverTitleEl.textContent = "Defeat";
+    gameoverSubEl.textContent = "Your hull reached 0 first.";
   } else if (reason === "dead") {
     gameoverTitleEl.textContent = "Signal Lost";
   } else {
@@ -3019,6 +3149,8 @@ function startRun(mode, options = {}) {
       run.duel.roomCode = ONLINE_SESSION.roomCode || "";
       run.duel.role = ONLINE_SESSION.role || "";
       run.duel.opponentRole = ONLINE_SESSION.opponentRole || "";
+      run.duel.localLabel = onlineSelfIdentity().name || "You";
+      run.duel.opponentLabel = "Opponent";
       // Spawn opponent near the top of the arena. We'll update its position from RTDB each frame.
       spawnPvpEnemyAt(WORLD.width / 2, 90);
     } else {
@@ -3062,11 +3194,11 @@ function updateHud() {
     if (run.duel && run.duel.kind === "online") {
       const opp = entities.enemies.find((e) => e.type === "pvp");
       const hp = opp ? `${Math.max(0, Math.ceil(opp.hp))}/${Math.ceil(opp.maxHp)}` : "—";
-      objectiveEl.textContent = `Defeat opponent (${hp})`;
+      objectiveEl.textContent = `Win: reduce opponent HP to 0 (${hp})`;
     } else {
       const duelist = entities.enemies.find((e) => e.type === "duelist");
       const hp = duelist ? `${Math.max(0, Math.ceil(duelist.hp))}/${Math.ceil(duelist.maxHp)}` : "—";
-      objectiveEl.textContent = `Defeat duelist (${hp})`;
+      objectiveEl.textContent = `Win: reduce duelist HP to 0 (${hp})`;
     }
   } else {
     const nextBoss = run.bossAlive ? "Boss fight!" : `Next boss: W${Math.ceil(run.wave / 5) * 5}`;
@@ -3710,6 +3842,35 @@ function drawPlayerShip() {
   drawFancyPlayerShip();
 }
 
+function drawOnlineDuelLabels() {
+  if (!(run.active && run.mode === MODE.DUEL && run.duel && run.duel.kind === "online")) return;
+  const enemy = entities.enemies.find((e) => e.type === "pvp");
+  if (!enemy) return;
+
+  const drawLabel = (x, y, text, bg, fg) => {
+    if (!text) return;
+    ctx.save();
+    ctx.font = "700 12px 'Segoe UI', sans-serif";
+    const label = String(text).slice(0, 20);
+    const width = Math.ceil(ctx.measureText(label).width) + 14;
+    const boxX = x - width / 2;
+    const boxY = y - 38;
+    ctx.fillStyle = bg;
+    ctx.strokeStyle = "rgba(255,255,255,0.15)";
+    ctx.lineWidth = 1;
+    ctx.fillRect(boxX, boxY, width, 20);
+    ctx.strokeRect(boxX, boxY, width, 20);
+    ctx.fillStyle = fg;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(label, x, boxY + 10);
+    ctx.restore();
+  };
+
+  drawLabel(player.x, player.y, `YOU: ${run.duel.localLabel || "Pilot"}`, "rgba(38,95,255,0.38)", "#dbeafe");
+  drawLabel(enemy.x, enemy.y, `OPP: ${run.duel.opponentLabel || "Opponent"}`, "rgba(255,114,61,0.34)", "#fff7ed");
+}
+
 function render(dt) {
   beginFrame();
 
@@ -3727,6 +3888,7 @@ function render(dt) {
   drawParticles();
   drawDrones();
   drawPlayerShip();
+  drawOnlineDuelLabels();
 
   ctx.restore();
 }
@@ -3755,6 +3917,7 @@ updateRotateOverlay();
 updateTouchControlsVisibility();
 if (!fullscreenCleanup) fullscreenCleanup = setupFullscreenToggle({ element: document.documentElement });
 setFullscreenButtonLabel();
+updateFullscreenButtonVisibility();
 
 if (menuFullscreenBtn) {
   menuFullscreenBtn.addEventListener("click", () => toggleFullscreen(document.documentElement));
@@ -3872,13 +4035,13 @@ try {
           saveNow();
           updateTopBar();
           renderHangar();
-          onlineHintEl.textContent = "Purchase complete. Crystals added to your cloud profile.";
+          onlineHintEl.textContent = "Purchase complete. Rewards synced to your cloud profile.";
         })
         .catch(() => {
-          onlineHintEl.textContent = "Purchase complete. Please open Online -> sign in to sync crystals.";
+          onlineHintEl.textContent = "Purchase complete. Please open Online and sign in to sync rewards.";
         });
     } else {
-      onlineHintEl.textContent = "Purchase complete. Please sign in to sync crystals to your account.";
+      onlineHintEl.textContent = "Purchase complete. Please sign in to sync rewards to your account.";
     }
   } else if (purchase === "cancel") {
     window.history.replaceState({}, document.title, window.location.pathname);

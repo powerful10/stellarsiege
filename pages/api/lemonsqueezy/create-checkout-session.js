@@ -78,7 +78,8 @@ export default async function handler(req, res) {
           custom: {
             uid: user.uid,
             packId,
-            crystals: String(pack.crystals),
+            crystals: String(pack.crystals || 0),
+            credits: String(pack.credits || 0),
           },
         },
         ...(testMode ? { test_mode: true } : {}),
