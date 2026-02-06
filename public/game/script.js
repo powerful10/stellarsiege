@@ -2454,6 +2454,7 @@ function onlineAttachRoomListeners() {
     if (run.active && run.mode === MODE.DUEL && run.duel.kind === "online") {
       run.duel.localLabel = onlinePlayerLabel(players[ONLINE_SESSION.role], "You");
       run.duel.opponentLabel = onlinePlayerLabel(players[ONLINE_SESSION.opponentRole], "Opponent");
+      onlineApplyRemoteMatchResult(v);
     }
 
     if (status === "playing" && state !== STATE.RUN) {
@@ -2560,6 +2561,30 @@ function startOnlineDuelFromRoom(room) {
 
 function isOnlineDuelActive() {
   return run.active && run.mode === MODE.DUEL && run.duel && run.duel.kind === "online" && Boolean(ONLINE_SESSION.roomRef);
+}
+
+function onlineApplyRemoteMatchResult(room) {
+  if (!isOnlineDuelActive()) return;
+  if (state !== STATE.RUN) return;
+  if (!run.duel || run.duel.remoteEndApplied) return;
+
+  const results = (room && room.results) || {};
+  const localResult = results[ONLINE_SESSION.role] || null;
+  const opponentResult = results[ONLINE_SESSION.opponentRole] || null;
+  const localOutcome = localResult && localResult.outcome ? String(localResult.outcome) : "";
+  const oppOutcome = opponentResult && opponentResult.outcome ? String(opponentResult.outcome) : "";
+
+  if (localOutcome === "loss" || oppOutcome === "win") {
+    run.duel.remoteEndApplied = true;
+    // Reuse local death flow so the losing ship explodes before defeat screen.
+    takeDamage(Math.max(1, player.shield + player.hull + 9999));
+    return;
+  }
+
+  if (localOutcome === "win" || oppOutcome === "loss") {
+    run.duel.remoteEndApplied = true;
+    endRun("duel_win");
+  }
 }
 
 function onlineDuelMaybeSendBullet(b) {
@@ -2677,6 +2702,7 @@ const run = {
     opponentRole: "",
     localLabel: "",
     opponentLabel: "",
+    remoteEndApplied: false,
     lastSendAt: 0,
   },
   campaign: {
@@ -2853,6 +2879,7 @@ function resetRun(mode) {
     opponentRole: "",
     localLabel: "",
     opponentLabel: "",
+    remoteEndApplied: false,
     lastSendAt: 0,
   };
   run.campaign = {
@@ -3162,8 +3189,8 @@ function endRun(reason) {
     gameoverTitleEl.textContent = "Victory!";
     gameoverSubEl.textContent = "Opponent hull reached 0.";
   } else if (reason === "duel_loss") {
-    gameoverTitleEl.textContent = "Defeat";
-    gameoverSubEl.textContent = "Your hull reached 0 first.";
+    gameoverTitleEl.textContent = "You Lost";
+    gameoverSubEl.textContent = "Opponent destroyed your ship first.";
   } else if (reason === "dead") {
     gameoverTitleEl.textContent = "Signal Lost";
   } else {
