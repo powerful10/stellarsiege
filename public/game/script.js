@@ -197,6 +197,7 @@ let state = STATE.MENU;
 let activeMode = MODE.SURVIVAL;
 let activeCampaignMissionId = null;
 let paused = false;
+let hangarAuthWaitScheduled = false;
 
 function setPaused(next) {
   paused = next;
@@ -1035,7 +1036,8 @@ playCampaignBtn.addEventListener("click", () => {
   renderCampaignMissions();
   setState(STATE.CAMPAIGN);
 });
-hangarBtn.addEventListener("click", () => {
+hangarBtn.addEventListener("click", async () => {
+  await waitForAuthRestore();
   renderHangar();
   setState(STATE.HANGAR);
 });
@@ -1204,8 +1206,9 @@ menuCampaignBtn.addEventListener("click", () => {
   setState(STATE.CAMPAIGN);
 });
 
-menuHangarBtn.addEventListener("click", () => {
+menuHangarBtn.addEventListener("click", async () => {
   setMenuOpen(false);
+  await waitForAuthRestore();
   renderHangar();
   setState(STATE.HANGAR);
 });
@@ -1296,6 +1299,26 @@ function renderHangar() {
   const payReady = isHosted(); // same-origin backend supported when PAYMENTS_API_BASE is empty
   const selectedShip = shipById(SAVE.profile.selectedShipId);
   const selectedState = ensureShipState(selectedShip.id);
+
+  // Store gating: real money purchase requires hosting + backend + account.
+  // Conversion is allowed only when signed in (or in local dev without Firebase).
+  if (CLOUD.enabled && !CLOUD.authResolved) {
+    buy100Btn.disabled = true;
+    buy550Btn.disabled = true;
+    buyCredits10kBtn.disabled = true;
+    buyCredits65kBtn.disabled = true;
+    convertBtn.disabled = true;
+    upgradeListEl.innerHTML = `<div class="fine">Checking your Google sign-in status...</div>`;
+    if (!hangarAuthWaitScheduled) {
+      hangarAuthWaitScheduled = true;
+      waitForAuthRestore().then(() => {
+        hangarAuthWaitScheduled = false;
+        renderHangar();
+      });
+    }
+    return;
+  }
+  hangarAuthWaitScheduled = false;
 
   // Store gating: real money purchase requires hosting + backend + account.
   // Conversion is allowed only when signed in (or in local dev without Firebase).
@@ -1502,12 +1525,31 @@ function renderLeaderboard(which) {
 const CLOUD = {
   ready: false,
   enabled: false,
+  authResolved: false,
+  authReadyPromise: null,
+  authReadyResolve: null,
   user: null,
   auth: null,
   firestore: null,
   rtdb: null,
   status: "Offline",
 };
+
+function markAuthResolved() {
+  if (CLOUD.authResolved) return;
+  CLOUD.authResolved = true;
+  if (typeof CLOUD.authReadyResolve === "function") {
+    CLOUD.authReadyResolve();
+  }
+}
+
+async function waitForAuthRestore(timeoutMs = 3000) {
+  cloudInit();
+  if (!CLOUD.enabled) return;
+  if (CLOUD.authResolved) return;
+  const timeout = new Promise((resolve) => setTimeout(resolve, timeoutMs));
+  await Promise.race([CLOUD.authReadyPromise, timeout]);
+}
 
 // -----------------------------
 // Payments (Lemon Squeezy backend) - optional
@@ -1576,18 +1618,24 @@ function hasFirebaseConfig() {
 function cloudInit() {
   if (CLOUD.ready) return;
   CLOUD.ready = true;
+  CLOUD.authResolved = false;
+  CLOUD.authReadyPromise = new Promise((resolve) => {
+    CLOUD.authReadyResolve = resolve;
+  });
 
   const hasSdk = typeof window.firebase !== "undefined";
   const hasConfig = hasFirebaseConfig();
   if (!hasSdk || !hasConfig) {
     CLOUD.enabled = false;
     CLOUD.status = "Offline (no Firebase config)";
+    markAuthResolved();
     updateAuthUi();
     return;
   }
   if (!isHosted()) {
     CLOUD.enabled = false;
     CLOUD.status = "Offline (open via http://, not file://)";
+    markAuthResolved();
     updateAuthUi();
     return;
   }
@@ -1597,6 +1645,11 @@ function cloudInit() {
       window.firebase.initializeApp(window.FIREBASE_CONFIG);
     }
     CLOUD.auth = window.firebase.auth();
+    if (window.firebase.auth && window.firebase.auth.Auth && window.firebase.auth.Auth.Persistence) {
+      CLOUD.auth
+        .setPersistence(window.firebase.auth.Auth.Persistence.LOCAL)
+        .catch(() => {});
+    }
     CLOUD.firestore = window.firebase.firestore();
     CLOUD.rtdb = window.firebase.database ? window.firebase.database() : null;
     CLOUD.enabled = true;
@@ -1605,12 +1658,14 @@ function cloudInit() {
 
     CLOUD.auth.onAuthStateChanged(async (user) => {
       CLOUD.user = user || null;
+      markAuthResolved();
       await cloudOnAuthChanged();
     });
   } catch (err) {
     console.warn("[CLOUD] init failed", err);
     CLOUD.enabled = false;
     CLOUD.status = "Offline (Firebase init failed)";
+    markAuthResolved();
     updateAuthUi();
   }
 }
@@ -1795,7 +1850,11 @@ async function cloudOnAuthChanged() {
       SAVE.profile.name = CLOUD.user.displayName.slice(0, 18);
       saveNow();
     }
-    await cloudPullMerge();
+    try {
+      await cloudPullMerge();
+    } catch (err) {
+      console.warn("[CLOUD] pull/merge failed", err);
+    }
     updateTopBar();
     renderHangar();
   }
@@ -3910,6 +3969,7 @@ function gameLoop(ts) {
 }
 
 // Initial UI state + background animation
+cloudInit();
 updateTopBar();
 setState(STATE.MENU);
 updateHud();
