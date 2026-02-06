@@ -1296,12 +1296,29 @@ accountSyncBtn.addEventListener("click", () => {
 // Game + UI implementation
 // -----------------------------
 
-pilotPillEl.addEventListener("click", () => {
-  const next = prompt("Pilot name:", SAVE.profile.name);
+pilotPillEl.addEventListener("click", async () => {
+  const next = prompt("Username (3-20 chars, letters/numbers/_):", SAVE.profile.name);
   if (!next) return;
-  SAVE.profile.name = next.slice(0, 18);
-  saveNow();
-  updateTopBar();
+  const cleaned = cleanUsernameInput(next);
+  if (!isValidUsername(cleaned)) {
+    alert("Username must be 3-20 characters and use only letters, numbers, or underscore.");
+    return;
+  }
+
+  cloudInit();
+  if (isAuthed()) {
+    const claim = await claimUniqueUsername(cleaned);
+    if (!claim.ok) {
+      if (claim.code === "taken") alert("That username is already taken.");
+      else alert("Could not update username right now.");
+      return;
+    }
+  } else {
+    SAVE.profile.name = cleaned;
+    SAVE.profile.updatedAt = nowMs();
+    saveNow();
+    updateTopBar();
+  }
   renderHangar();
 });
 
@@ -1541,12 +1558,16 @@ const CLOUD = {
   authResolved: false,
   authReadyPromise: null,
   authReadyResolve: null,
+  usernameReady: false,
   user: null,
   auth: null,
   firestore: null,
   rtdb: null,
   status: "Offline",
 };
+
+const USERNAME_RE = /^[A-Za-z0-9_]{3,20}$/;
+let usernameEnsureInFlight = null;
 
 function markAuthResolved() {
   if (CLOUD.authResolved) return;
@@ -1640,6 +1661,7 @@ function cloudInit() {
   const hasConfig = hasFirebaseConfig();
   if (!hasSdk || !hasConfig) {
     CLOUD.enabled = false;
+    CLOUD.usernameReady = false;
     CLOUD.status = "Offline (no Firebase config)";
     markAuthResolved();
     updateAuthUi();
@@ -1647,6 +1669,7 @@ function cloudInit() {
   }
   if (!isHosted()) {
     CLOUD.enabled = false;
+    CLOUD.usernameReady = false;
     CLOUD.status = "Offline (open via http://, not file://)";
     markAuthResolved();
     updateAuthUi();
@@ -1677,6 +1700,7 @@ function cloudInit() {
   } catch (err) {
     console.warn("[CLOUD] init failed", err);
     CLOUD.enabled = false;
+    CLOUD.usernameReady = false;
     CLOUD.status = "Offline (Firebase init failed)";
     markAuthResolved();
     updateAuthUi();
@@ -1687,6 +1711,171 @@ function cloudUserLabel() {
   if (!CLOUD.enabled) return CLOUD.status;
   if (!CLOUD.user) return "Signed out";
   return CLOUD.user.displayName || CLOUD.user.email || "Signed in";
+}
+
+function normalizeUsername(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function cleanUsernameInput(value) {
+  return String(value || "")
+    .trim()
+    .replace(/\s+/g, "")
+    .replace(/[^A-Za-z0-9_]/g, "")
+    .slice(0, 20);
+}
+
+function isValidUsername(value) {
+  return USERNAME_RE.test(String(value || ""));
+}
+
+function suggestUsername(base) {
+  let candidate = cleanUsernameInput(base);
+  if (!candidate) candidate = `pilot${Math.floor(100 + Math.random() * 900)}`;
+  if (candidate.length < 3) candidate = `${candidate}${Math.floor(100 + Math.random() * 900)}`;
+  return candidate.slice(0, 20);
+}
+
+async function claimUniqueUsername(usernameRaw) {
+  if (!CLOUD.enabled || !CLOUD.user || !CLOUD.firestore) return { ok: false, code: "offline" };
+  const username = cleanUsernameInput(usernameRaw);
+  if (!isValidUsername(username)) return { ok: false, code: "invalid" };
+  const normalized = normalizeUsername(username);
+  const uid = CLOUD.user.uid;
+  const userRef = cloudDocRef();
+  const usernamesRef = CLOUD.firestore.collection("usernames").doc(normalized);
+
+  try {
+    await CLOUD.firestore.runTransaction(async (tx) => {
+      const userSnap = await tx.get(userRef);
+      const userData = userSnap.exists ? userSnap.data() || {} : {};
+      const prevNorm =
+        userData &&
+        userData.profile &&
+        typeof userData.profile.usernameNormalized === "string"
+          ? userData.profile.usernameNormalized
+          : "";
+
+      const existingSnap = await tx.get(usernamesRef);
+      if (existingSnap.exists) {
+        const existing = existingSnap.data() || {};
+        if (String(existing.uid || "") !== uid) {
+          throw new Error("taken");
+        }
+      }
+
+      if (prevNorm && prevNorm !== normalized) {
+        const prevRef = CLOUD.firestore.collection("usernames").doc(prevNorm);
+        const prevSnap = await tx.get(prevRef);
+        if (prevSnap.exists) {
+          const prev = prevSnap.data() || {};
+          if (String(prev.uid || "") === uid) tx.delete(prevRef);
+        }
+      }
+
+      tx.set(
+        usernamesRef,
+        {
+          uid,
+          username,
+          updatedAt: nowMs(),
+        },
+        { merge: true }
+      );
+
+      const profile = (userData && userData.profile) || {};
+      tx.set(
+        userRef,
+        {
+          profile: {
+            ...profile,
+            name: username,
+            usernameNormalized: normalized,
+            updatedAt: nowMs(),
+          },
+        },
+        { merge: true }
+      );
+    });
+
+    SAVE.profile.name = username;
+    SAVE.profile.updatedAt = nowMs();
+    saveNow();
+    updateTopBar();
+    CLOUD.usernameReady = true;
+    return { ok: true, username };
+  } catch (err) {
+    if (String(err && err.message || "").toLowerCase().includes("taken")) {
+      return { ok: false, code: "taken" };
+    }
+    return { ok: false, code: "unknown" };
+  }
+}
+
+async function ensureUniqueUsernameForAccount(interactive = false) {
+  if (!CLOUD.enabled || !CLOUD.user || !CLOUD.firestore) return false;
+  if (usernameEnsureInFlight) return usernameEnsureInFlight;
+
+  usernameEnsureInFlight = (async () => {
+    const userRef = cloudDocRef();
+    let remoteName = "";
+    try {
+      const snap = await userRef.get();
+      if (snap.exists) {
+        const data = snap.data() || {};
+        const profile = data.profile || {};
+        if (typeof profile.name === "string") remoteName = cleanUsernameInput(profile.name);
+      }
+    } catch {
+      // ignore fetch failure and fallback to local candidate
+    }
+
+    if (isValidUsername(remoteName)) {
+      SAVE.profile.name = remoteName;
+      SAVE.profile.updatedAt = nowMs();
+      saveNow();
+      updateTopBar();
+      CLOUD.usernameReady = true;
+      return true;
+    }
+
+    let candidate = suggestUsername(SAVE.profile.name || (CLOUD.user && CLOUD.user.displayName) || "pilot");
+    let result = await claimUniqueUsername(candidate);
+    if (result.ok) return true;
+    if (!interactive) {
+      CLOUD.usernameReady = false;
+      return false;
+    }
+
+    while (true) {
+      const value = prompt(
+        "Choose a unique username (3-20 chars, letters/numbers/_ only). This name appears in leaderboard.",
+        candidate
+      );
+      if (value == null) {
+        CLOUD.usernameReady = false;
+        return false;
+      }
+      candidate = cleanUsernameInput(value);
+      if (!isValidUsername(candidate)) {
+        alert("Username must be 3-20 characters and use only letters, numbers, or underscore.");
+        continue;
+      }
+
+      result = await claimUniqueUsername(candidate);
+      if (result.ok) return true;
+      if (result.code === "taken") {
+        alert("That username is already taken. Please choose another.");
+      } else {
+        alert("Could not save username right now. Please try again.");
+      }
+    }
+  })()
+    .finally(() => {
+      usernameEnsureInFlight = null;
+    });
+
+  return usernameEnsureInFlight;
 }
 
 async function cloudSignInGoogle() {
@@ -1814,6 +2003,10 @@ function leaderboardRankComparator(a, b) {
 
 async function cloudUpdatePlayerRanking(entry, reason) {
   if (!CLOUD.enabled || !CLOUD.firestore || !CLOUD.user) return;
+  if (!CLOUD.usernameReady) {
+    const ok = await ensureUniqueUsernameForAccount(false);
+    if (!ok) return;
+  }
   const uid = CLOUD.user.uid;
   const isOnlineDuel = run.mode === MODE.DUEL && run.duel && run.duel.kind === "online";
   const ref = CLOUD.firestore.collection("leaderboard_players").doc(uid);
@@ -1836,8 +2029,7 @@ async function cloudUpdatePlayerRanking(entry, reason) {
       ref,
       {
         uid,
-        name: (CLOUD.user.displayName || SAVE.profile.name || "Pilot").slice(0, 40),
-        email: (CLOUD.user.email || "").slice(0, 80),
+        name: (SAVE.profile.name || "Pilot").slice(0, 40),
         gamesPlayed,
         gamesSurvival,
         gamesCampaign,
@@ -1893,12 +2085,11 @@ async function renderGlobalLeaderboard() {
         const xp = Number(e.xp || 0);
         const points = Number(e.points || wins * 3);
         const name = String(e.name || "Pilot").slice(0, 40);
-        const email = e.email ? String(e.email).slice(0, 42) : "";
         return `
           <div class="lbRow">
             <div class="lbRank">#${i + 1}</div>
             <div>
-              <div class="lbName">${name}${email ? ` <span style="opacity:.55;font-size:12px">${email}</span>` : ""}</div>
+              <div class="lbName">${name}</div>
               <div style="opacity:.72; font-size:12px">W ${wins} · L ${losses} · Online ${onlineGames} · Games ${gamesPlayed} · XP ${xp}</div>
             </div>
             <div class="lbScore">${points} pts</div>
@@ -1916,7 +2107,6 @@ async function renderGlobalLeaderboard() {
 }
 
 async function cloudOnAuthChanged() {
-  updateAuthUi();
   if (CLOUD.user) {
     // Auto-sync + set pilot name from Google if local is default
     if (SAVE.profile.name && SAVE.profile.name.startsWith("Pilot-") && CLOUD.user.displayName) {
@@ -1928,9 +2118,17 @@ async function cloudOnAuthChanged() {
     } catch (err) {
       console.warn("[CLOUD] pull/merge failed", err);
     }
+    try {
+      await ensureUniqueUsernameForAccount(true);
+    } catch (err) {
+      console.warn("[CLOUD] username setup failed", err);
+    }
     updateTopBar();
     renderHangar();
+  } else {
+    CLOUD.usernameReady = false;
   }
+  updateAuthUi();
 }
 
 function updateAuthUi() {
@@ -1938,7 +2136,7 @@ function updateAuthUi() {
   googleSignInBtn.disabled = !CLOUD.enabled;
   signOutBtn.disabled = !CLOUD.enabled || !CLOUD.user;
 
-  const canOnline = Boolean(CLOUD.enabled && CLOUD.user && CLOUD.rtdb);
+  const canOnline = Boolean(CLOUD.enabled && CLOUD.user && CLOUD.rtdb && CLOUD.usernameReady);
   createRoomBtn.disabled = !canOnline;
   joinRoomBtn.disabled = !canOnline;
   startDuelBtn.disabled = false; // starts online if room is ready, otherwise practice duel
@@ -1959,6 +2157,13 @@ function updateAuthUi() {
   }
   if (!CLOUD.rtdb) {
     onlineHintEl.textContent = "Realtime Database not available. Enable RTDB in Firebase + add databaseURL to FIREBASE_CONFIG.";
+    topSignInBtn.disabled = false;
+    topSignInBtn.title = "";
+    setTopAuthUi({ signedIn: true, displayName: CLOUD.user.displayName, photoUrl: CLOUD.user.photoURL });
+    return;
+  }
+  if (!CLOUD.usernameReady) {
+    onlineHintEl.textContent = "Set a unique username to unlock online rooms and leaderboard identity.";
     topSignInBtn.disabled = false;
     topSignInBtn.title = "";
     setTopAuthUi({ signedIn: true, displayName: CLOUD.user.displayName, photoUrl: CLOUD.user.photoURL });
@@ -2271,16 +2476,13 @@ const ONLINE_SESSION = {
 function onlinePlayerLabel(playerData, fallback = "Pilot") {
   const fromName = playerData && typeof playerData.name === "string" ? playerData.name.trim() : "";
   if (fromName) return fromName.slice(0, 20);
-  const fromEmail = playerData && typeof playerData.email === "string" ? playerData.email.trim() : "";
-  if (fromEmail) return fromEmail.slice(0, 20);
   return String(fallback || "Pilot").slice(0, 20);
 }
 
 function onlineSelfIdentity() {
-  const cloudName = CLOUD.user && (CLOUD.user.displayName || CLOUD.user.email);
+  const cloudName = CLOUD.user && CLOUD.user.displayName;
   return {
     name: String(SAVE.profile.name || cloudName || "Pilot").slice(0, 20),
-    email: CLOUD.user && CLOUD.user.email ? String(CLOUD.user.email).slice(0, 50) : "",
   };
 }
 
@@ -2328,6 +2530,12 @@ async function onlineCreateRoom() {
     return;
   }
 
+  const usernameOk = await ensureUniqueUsernameForAccount(true);
+  if (!usernameOk) {
+    onlineHintEl.textContent = "You need a unique username before creating a room.";
+    return;
+  }
+
   const code = randomRoomCode(6);
   const uid = CLOUD.user.uid;
   const shipId = SAVE.profile.selectedShipId || "scout";
@@ -2347,7 +2555,6 @@ async function onlineCreateRoom() {
       host: {
         uid,
         name: identity.name,
-        email: identity.email,
         shipId,
         joinedAt: nowMs(),
       },
@@ -2372,6 +2579,12 @@ async function onlineJoinRoom(codeRaw) {
     onlineHintEl.textContent = !CLOUD.enabled
       ? "Online requires Firebase config + hosting over http(s)."
       : "Sign in with Google to join a room.";
+    return;
+  }
+
+  const usernameOk = await ensureUniqueUsernameForAccount(true);
+  if (!usernameOk) {
+    onlineHintEl.textContent = "You need a unique username before joining a room.";
     return;
   }
 
@@ -2413,7 +2626,6 @@ async function onlineJoinRoom(codeRaw) {
     await ref.child("players/guest").set({
       uid,
       name: identity.name,
-      email: identity.email,
       shipId,
       joinedAt: nowMs(),
     });
@@ -2422,7 +2634,6 @@ async function onlineJoinRoom(codeRaw) {
     await ref.child("players/host").update({
       uid,
       name: identity.name,
-      email: identity.email,
       shipId,
     });
   }
