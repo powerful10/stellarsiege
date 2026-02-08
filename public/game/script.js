@@ -40,6 +40,87 @@ function lockMobileZoom() {
   document.addEventListener("gestureend", (e) => e.preventDefault(), { passive: false });
 }
 
+const ADS = {
+  provider:
+    typeof window.ADS_CONFIG === "object" && window.ADS_CONFIG
+      ? String(window.ADS_CONFIG.provider || "none").toLowerCase()
+      : "none",
+  dailyCap: Math.max(
+    1,
+    Math.floor(
+      Number(
+        typeof window.ADS_CONFIG === "object" && window.ADS_CONFIG
+          ? window.ADS_CONFIG.dailyRewardCap
+          : 5
+      ) || 5
+    )
+  ),
+  cooldownMs: Math.max(
+    0,
+    Math.floor(
+      Number(
+        typeof window.ADS_CONFIG === "object" && window.ADS_CONFIG
+          ? window.ADS_CONFIG.cooldownSeconds
+          : 60
+      ) || 60
+    ) * 1000
+  ),
+  mockEnabled:
+    typeof window.ADS_CONFIG === "object" &&
+    window.ADS_CONFIG &&
+    Boolean(window.ADS_CONFIG.mockEnabled),
+  mockSeconds: Math.max(
+    3,
+    Math.floor(
+      Number(
+        typeof window.ADS_CONFIG === "object" && window.ADS_CONFIG
+          ? window.ADS_CONFIG.mockSeconds
+          : 12
+      ) || 12
+    )
+  ),
+};
+
+const ANALYTICS = {
+  measurementId:
+    typeof window.GA_MEASUREMENT_ID === "string" ? window.GA_MEASUREMENT_ID.trim() : "",
+  initialized: false,
+};
+
+function initAnalytics() {
+  if (ANALYTICS.initialized) return;
+  ANALYTICS.initialized = true;
+  if (!ANALYTICS.measurementId) return;
+
+  const existing = document.querySelector("script[data-ga='stellar']");
+  if (!existing) {
+    const script = document.createElement("script");
+    script.async = true;
+    script.src = `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(ANALYTICS.measurementId)}`;
+    script.setAttribute("data-ga", "stellar");
+    document.head.appendChild(script);
+  }
+
+  window.dataLayer = window.dataLayer || [];
+  window.gtag = window.gtag || function gtag() {
+    window.dataLayer.push(arguments);
+  };
+  window.gtag("js", new Date());
+  window.gtag("config", ANALYTICS.measurementId, {
+    anonymize_ip: true,
+    send_page_view: true,
+  });
+}
+
+function trackEvent(name, params = {}) {
+  if (!window.gtag) return;
+  try {
+    window.gtag("event", name, params);
+  } catch {
+    // ignore analytics runtime errors
+  }
+}
+
 function must(id) {
   const el = $(id);
   if (!el) throw new Error(`Missing element #${id} (check index.html)`);
@@ -626,6 +707,9 @@ function defaultSave() {
       onlineGames: 0,
       onlineWins: 0,
       onlineLosses: 0,
+      adRewardsDay: "",
+      adRewardsClaimed: 0,
+      adRewardLastAt: 0,
       updatedAt: 0,
     },
     ships: {},
@@ -895,11 +979,21 @@ function migrateSave() {
 
   if (!SAVE.profile.updatedAt) SAVE.profile.updatedAt = 0;
   if (!Number.isFinite(Number(SAVE.profile.crystalsShadow))) SAVE.profile.crystalsShadow = SAVE.profile.crystals || 0;
-  const statKeys = ["gamesPlayed", "gamesSurvival", "gamesCampaign", "onlineGames", "onlineWins", "onlineLosses"];
+  const statKeys = [
+    "gamesPlayed",
+    "gamesSurvival",
+    "gamesCampaign",
+    "onlineGames",
+    "onlineWins",
+    "onlineLosses",
+    "adRewardsClaimed",
+  ];
   statKeys.forEach((key) => {
     const value = Number(SAVE.profile[key] || 0);
     SAVE.profile[key] = Number.isFinite(value) && value >= 0 ? Math.floor(value) : 0;
   });
+  if (!Number.isFinite(Number(SAVE.profile.adRewardLastAt))) SAVE.profile.adRewardLastAt = 0;
+  if (typeof SAVE.profile.adRewardsDay !== "string") SAVE.profile.adRewardsDay = "";
   saveNow();
 }
 
@@ -1568,6 +1662,7 @@ const CLOUD = {
 
 const USERNAME_RE = /^[A-Za-z0-9_]{3,20}$/;
 let usernameEnsureInFlight = null;
+let trackedAuthUid = null;
 
 function markAuthResolved() {
   if (CLOUD.authResolved) return;
@@ -1929,6 +2024,9 @@ function computeLocalSnapshot() {
     onlineGames: Number(SAVE.profile.onlineGames || 0),
     onlineWins: Number(SAVE.profile.onlineWins || 0),
     onlineLosses: Number(SAVE.profile.onlineLosses || 0),
+    adRewardsDay: String(SAVE.profile.adRewardsDay || ""),
+    adRewardsClaimed: Number(SAVE.profile.adRewardsClaimed || 0),
+    adRewardLastAt: Number(SAVE.profile.adRewardLastAt || 0),
     updatedAt: nowMs(),
   };
   return {
@@ -1960,7 +2058,7 @@ function mergeShips(localShips, remoteShips) {
 async function cloudPullMerge() {
   const ref = cloudDocRef();
   if (!ref) return;
-  const snap = await ref.once("value");
+  const snap = await ref.get();
   if (!snap.exists) {
     // First-time user: seed cloud
     await ref.set(computeLocalSnapshot(), { merge: true });
@@ -2123,6 +2221,10 @@ async function renderGlobalLeaderboard() {
 
 async function cloudOnAuthChanged() {
   if (CLOUD.user) {
+    if (trackedAuthUid !== CLOUD.user.uid) {
+      trackEvent("login", { method: "google" });
+      trackedAuthUid = CLOUD.user.uid;
+    }
     // Auto-sync + set pilot name from Google if local is default
     if (SAVE.profile.name && SAVE.profile.name.startsWith("Pilot-") && CLOUD.user.displayName) {
       SAVE.profile.name = CLOUD.user.displayName.slice(0, 18);
@@ -2141,6 +2243,8 @@ async function cloudOnAuthChanged() {
     updateTopBar();
     renderHangar();
   } else {
+    if (trackedAuthUid) trackEvent("logout", { method: "google" });
+    trackedAuthUid = null;
     CLOUD.usernameReady = false;
   }
   updateAuthUi();
@@ -2977,6 +3081,77 @@ const AD_REWARDS = {
   duel: { seconds: 60, credits: 420, crystals: 2, xp: 360 },
 };
 
+function adRewardDayKey() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function ensureAdRewardDay() {
+  const today = adRewardDayKey();
+  if (SAVE.profile.adRewardsDay !== today) {
+    SAVE.profile.adRewardsDay = today;
+    SAVE.profile.adRewardsClaimed = 0;
+  }
+}
+
+function adRewardStatus() {
+  ensureAdRewardDay();
+  const claimed = Math.max(0, Math.floor(Number(SAVE.profile.adRewardsClaimed || 0)));
+  const remaining = Math.max(0, ADS.dailyCap - claimed);
+  const cooldownUntil = Number(SAVE.profile.adRewardLastAt || 0) + ADS.cooldownMs;
+  const waitMs = Math.max(0, cooldownUntil - Date.now());
+  return { claimed, remaining, waitMs };
+}
+
+function formatCooldown(waitMs) {
+  const sec = Math.max(1, Math.ceil(waitMs / 1000));
+  if (sec < 60) return `${sec}s`;
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return s ? `${m}m ${s}s` : `${m}m`;
+}
+
+function consumeAdRewardSlot() {
+  const status = adRewardStatus();
+  if (status.remaining <= 0 || status.waitMs > 0) return false;
+  SAVE.profile.adRewardsClaimed = status.claimed + 1;
+  SAVE.profile.adRewardLastAt = nowMs();
+  SAVE.profile.updatedAt = nowMs();
+  saveNow();
+  return true;
+}
+
+function hasRewardedAdapter() {
+  return Boolean(window.stellarAds && typeof window.stellarAds.showRewardedAd === "function");
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function runMockRewardedAd(onTick) {
+  let remaining = ADS.mockSeconds;
+  while (remaining > 0) {
+    if (typeof onTick === "function") onTick(remaining);
+    await delay(1000);
+    remaining -= 1;
+  }
+}
+
+async function requestRewardedAdCompletion(modeKey, onTick) {
+  if (hasRewardedAdapter()) {
+    const result = await window.stellarAds.showRewardedAd({ placement: modeKey });
+    if (result === true) return true;
+    return Boolean(result && result.completed);
+  }
+
+  if (ADS.mockEnabled) {
+    await runMockRewardedAd(onTick);
+    return true;
+  }
+
+  return false;
+}
+
 const ENEMY_TYPES = {
   drone: {
     hp: (wave) => 2 + Math.floor(wave * 0.15),
@@ -3423,6 +3598,14 @@ function endRun(reason) {
     gameoverTitleEl.textContent = "Signal Lost";
   }
 
+  trackEvent("match_end", {
+    mode: run.mode,
+    reason,
+    score: Number(entry.score || 0),
+    wave: Number(entry.wave || 0),
+    rewards_saved: keepRewards ? 1 : 0,
+  });
+
   setState(STATE.OVER);
   renderAdReward(reason);
 }
@@ -3431,10 +3614,14 @@ function renderAdReward(reason) {
   if (!adRewardBoxEl || !adRewardBtn || !adRewardTextEl) return;
   const modeKey = run.mode === MODE.SURVIVAL ? "survival" : run.mode === MODE.CAMPAIGN ? "campaign" : "duel";
   const cfg = AD_REWARDS[modeKey];
+  const keepRewards = !progressionRequiresAuth() || isAuthed();
+  const status = adRewardStatus();
+
   adRewardBoxEl.classList.remove("hidden");
-  adRewardBtn.disabled = false;
+  adRewardBtn.onclick = null;
+  adRewardBtn.disabled = true;
   adRewardBtn.textContent = "Watch Ad";
-  adRewardTextEl.textContent = `Watch a ${cfg.seconds}s ad for +${cfg.credits} credits, +${cfg.crystals} crystals, +${cfg.xp} xp.`;
+  adRewardTextEl.textContent = `Watch an ad for +${cfg.credits} credits, +${cfg.crystals} crystals, +${cfg.xp} xp.`;
 
   if (run.adRewardClaimed) {
     adRewardBtn.disabled = true;
@@ -3442,31 +3629,125 @@ function renderAdReward(reason) {
     return;
   }
 
-  adRewardBtn.onclick = () => {
+  if (!keepRewards) {
+    adRewardTextEl.textContent = "Sign in with Google to claim ad rewards.";
+    return;
+  }
+
+  if (!hasRewardedAdapter() && !ADS.mockEnabled) {
+    adRewardTextEl.textContent = "Rewarded ads are currently unavailable.";
+    return;
+  }
+
+  if (status.remaining <= 0) {
+    adRewardTextEl.textContent = `Daily reward limit reached (${ADS.dailyCap}/${ADS.dailyCap}). Try again tomorrow.`;
+    return;
+  }
+
+  if (status.waitMs > 0) {
+    adRewardTextEl.textContent = `Next reward available in ${formatCooldown(status.waitMs)}.`;
+    adRewardBtn.textContent = "Cooldown";
+    return;
+  }
+
+  adRewardBtn.disabled = false;
+  adRewardBtn.textContent = "Watch Ad";
+  adRewardTextEl.textContent = `Watch an ad for +${cfg.credits} credits, +${cfg.crystals} crystals, +${cfg.xp} xp. ${status.remaining}/${ADS.dailyCap} available today.`;
+
+  trackEvent("rewarded_ad_offer_shown", {
+    mode: modeKey,
+    reason,
+    remaining: status.remaining,
+    cap: ADS.dailyCap,
+  });
+
+  adRewardBtn.onclick = async () => {
     if (run.adRewardClaimed) return;
-    run.adRewardClaimed = true;
-    let remaining = cfg.seconds;
+    const current = adRewardStatus();
+    if (current.remaining <= 0) {
+      adRewardTextEl.textContent = `Daily reward limit reached (${ADS.dailyCap}/${ADS.dailyCap}).`;
+      adRewardBtn.disabled = true;
+      adRewardBtn.textContent = "Limit Reached";
+      return;
+    }
+    if (current.waitMs > 0) {
+      adRewardTextEl.textContent = `Next reward available in ${formatCooldown(current.waitMs)}.`;
+      adRewardBtn.disabled = true;
+      adRewardBtn.textContent = "Cooldown";
+      return;
+    }
+
     adRewardBtn.disabled = true;
-    adRewardBtn.textContent = `Ad: ${remaining}s`;
-    const timer = setInterval(() => {
-      remaining -= 1;
-      if (remaining <= 0) {
-        clearInterval(timer);
-        grantAdReward(cfg);
-        adRewardBtn.textContent = "Reward Granted";
-      } else {
+    adRewardBtn.textContent = "Starting Ad...";
+
+    trackEvent("rewarded_ad_attempt", {
+      mode: modeKey,
+      provider: hasRewardedAdapter() ? ADS.provider || "custom" : "mock",
+      remaining: current.remaining,
+    });
+
+    try {
+      const completed = await requestRewardedAdCompletion(modeKey, (remaining) => {
         adRewardBtn.textContent = `Ad: ${remaining}s`;
+      });
+
+      if (!completed) {
+        adRewardBtn.disabled = false;
+        adRewardBtn.textContent = "Watch Ad";
+        adRewardTextEl.textContent = "Ad was closed or not available. Try again.";
+        trackEvent("rewarded_ad_incomplete", { mode: modeKey });
+        return;
       }
-    }, 1000);
+
+      if (!consumeAdRewardSlot()) {
+        const next = adRewardStatus();
+        adRewardBtn.disabled = true;
+        adRewardBtn.textContent = next.remaining <= 0 ? "Limit Reached" : "Cooldown";
+        adRewardTextEl.textContent =
+          next.remaining <= 0
+            ? `Daily reward limit reached (${ADS.dailyCap}/${ADS.dailyCap}).`
+            : `Next reward available in ${formatCooldown(next.waitMs)}.`;
+        trackEvent("rewarded_ad_slot_rejected", {
+          mode: modeKey,
+          remaining: next.remaining,
+          wait_ms: next.waitMs,
+        });
+        return;
+      }
+
+      const granted = grantAdReward(cfg);
+      if (!granted) {
+        adRewardBtn.disabled = true;
+        adRewardBtn.textContent = "Sign In Required";
+        return;
+      }
+
+      run.adRewardClaimed = true;
+      const next = adRewardStatus();
+      adRewardBtn.textContent = "Reward Granted";
+      adRewardTextEl.textContent = `Reward granted. ${next.remaining}/${ADS.dailyCap} ad rewards left today.`;
+      trackEvent("rewarded_ad_complete", {
+        mode: modeKey,
+        credits: cfg.credits,
+        crystals: cfg.crystals,
+        xp: cfg.xp,
+        remaining_after: next.remaining,
+      });
+    } catch (err) {
+      adRewardBtn.disabled = false;
+      adRewardBtn.textContent = "Watch Ad";
+      adRewardTextEl.textContent = "Ad failed to load. Please try again.";
+      trackEvent("rewarded_ad_error", { mode: modeKey, message: String((err && err.message) || "unknown") });
+    }
   };
 }
 
 function grantAdReward(cfg) {
-  if (!cfg) return;
+  if (!cfg) return false;
   const keepRewards = !progressionRequiresAuth() || isAuthed();
   if (!keepRewards) {
     adRewardTextEl.textContent = "Sign in to keep ad rewards.";
-    return;
+    return false;
   }
   SAVE.profile.credits += cfg.credits;
   SAVE.profile.crystals += cfg.crystals;
@@ -3476,6 +3757,7 @@ function grantAdReward(cfg) {
   saveNow();
   updateTopBar();
   if (CLOUD.enabled && CLOUD.user) cloudPush().catch(() => {});
+  return true;
 }
 
 function restartActiveRun() {
@@ -3517,6 +3799,10 @@ function startRun(mode, options = {}) {
   showFullscreenHint();
   activeMode = mode;
   run.adRewardClaimed = false;
+  trackEvent("match_start", {
+    mode,
+    mission_id: Number.isFinite(Number(options.missionId)) ? Number(options.missionId) : null,
+  });
 
   // If a user selected a locked ship, fall back to Scout.
   const selected = shipById(SAVE.profile.selectedShipId);
@@ -4301,6 +4587,7 @@ function gameLoop(ts) {
 }
 
 // Initial UI state + background animation
+initAnalytics();
 cloudInit();
 updateTopBar();
 setState(STATE.MENU);

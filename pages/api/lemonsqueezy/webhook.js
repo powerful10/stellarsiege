@@ -81,6 +81,8 @@ export default async function handler(req, res) {
       const uid = custom && custom.uid ? custom.uid : null;
       const crystals = Number(custom && custom.crystals ? custom.crystals : 0);
       const credits = Number(custom && custom.credits ? custom.credits : 0);
+      const orderId =
+        payload && payload.data && payload.data.id != null ? String(payload.data.id) : "";
 
       const status =
         payload && payload.data && payload.data.attributes ? payload.data.attributes.status : null;
@@ -92,9 +94,15 @@ export default async function handler(req, res) {
       if (uid && ((Number.isFinite(crystals) && crystals > 0) || (Number.isFinite(credits) && credits > 0))) {
         const db = admin.firestore();
         const ref = db.collection("users").doc(uid);
+        const fallbackEventId = crypto.createHash("sha256").update(rawBody).digest("hex");
+        const ledgerId = (orderId || fallbackEventId).slice(0, 120);
+        const ledgerRef = ref.collection("purchaseLedger").doc(ledgerId);
 
         await db.runTransaction(async (tx) => {
           const snap = await tx.get(ref);
+          const ledgerSnap = await tx.get(ledgerRef);
+          if (ledgerSnap.exists) return;
+
           const data = snap.exists ? snap.data() : {};
           const profile = (data && data.profile) || {};
           const current = Number(profile.crystals || 0);
@@ -113,6 +121,19 @@ export default async function handler(req, res) {
               },
               ships: (data && data.ships) || {},
               version: 2,
+            },
+            { merge: true }
+          );
+
+          tx.set(
+            ledgerRef,
+            {
+              orderId: orderId || null,
+              eventName: "order_created",
+              crystals,
+              credits,
+              status: status || "paid",
+              fulfilledAt: Date.now(),
             },
             { merge: true }
           );

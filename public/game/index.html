@@ -4,13 +4,21 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Stellar Siege — Roguelite Arena</title>
+  <meta name="description" content="Stellar Siege is a browser-based roguelite space shooter with Survival, Campaign, and Online Duel modes." />
+  <meta name="keywords" content="stellar siege, browser game, web shooter, roguelite shooter, online pvp game, space shooter" />
+  <meta name="theme-color" content="#0b0f1f" />
+  <meta property="og:title" content="Stellar Siege — Roguelite Arena" />
+  <meta property="og:description" content="Survive waves, complete campaign missions, upgrade ships, and duel online." />
+  <meta property="og:type" content="website" />
+  <meta property="og:image" content="/game/brand.svg" />
+  <meta property="og:url" content="/game/index.html" />
+  <link rel="canonical" href="/game/index.html" />
   <link rel="stylesheet" href="styles.css" />
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <link rel="apple-touch-icon" href="favicon.svg" />
 
   <!-- Monetization (AdSense) -->
-  <!-- Replace `ca-pub-XXXXXXXXXXXXXXX` with your AdSense publisher id after approval. -->
-  <!-- <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-XXXXXXXXXXXXXXX" crossorigin="anonymous"></script> -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5266296505652960" crossorigin="anonymous"></script>
 </head>
 <body>
   <div class="layout">
@@ -123,6 +131,10 @@
         </div>
         <div class="fine">
           Tip: Collect upgrade orbs mid-run. Spend Credits/Crystals in the Hangar.
+        </div>
+        <div class="fine" style="margin-top:10px">
+          <a href="/privacy.html" target="_blank" rel="noopener">Privacy</a> ·
+          <a href="/terms.html" target="_blank" rel="noopener">Terms</a>
         </div>
       </div>
     </div>
@@ -301,8 +313,8 @@
         <p>Rewards: <span id="finalRewards">0</span></p>
         <div id="adRewardBox" class="adReward">
           <div class="adReward__title">Bonus Reward</div>
-          <div id="adRewardText" class="adReward__text">Watch a short ad to earn extra rewards.</div>
-          <button id="adRewardBtn" class="btn">Watch Ad</button>
+          <div id="adRewardText" class="adReward__text">Watch an optional ad to earn extra rewards.</div>
+          <button id="adRewardBtn" class="btn">Watch Rewarded Ad</button>
         </div>
         <div class="row">
           <button id="restartBtn" class="btn">Play Again</button>
@@ -389,6 +401,7 @@
     <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
     <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-database-compat.js"></script>
     <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+    <script defer src="rewarded-adapter.js"></script>
     <script defer src="script.js"></script>
 
     <!-- Optional ad slot (enable after AdSense approval + ad unit setup) -->

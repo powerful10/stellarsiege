@@ -33,3 +33,23 @@ window.FIREBASE_CONFIG = {
 // When you deploy the backend, set e.g.:
 // window.PAYMENTS_API_BASE = "https://yourdomain.com";
 window.PAYMENTS_API_BASE = "";
+
+// Optional: GA4 measurement ID (for event analytics / funnel tracking).
+// Example: window.GA_MEASUREMENT_ID = "G-XXXXXXXXXX";
+window.GA_MEASUREMENT_ID = "";
+
+// Optional: rewarded ad config.
+// provider:
+// - "none"    => disables rewarded ad claiming
+// - "admanager" => Google Ad Manager GPT rewarded ad
+// - "custom"  => expects window.stellarAds.showRewardedAd({ placement }) to return { completed: true/false }
+//
+// mockEnabled should be false in production.
+window.ADS_CONFIG = {
+  provider: "none",
+  adUnitPath: "",
+  dailyRewardCap: 5,
+  cooldownSeconds: 60,
+  mockEnabled: false,
+  mockSeconds: 12,
+};
