@@ -60,12 +60,17 @@ body.infoDoc .layout.infoPage {
   border-radius: 14px;
   border: 1px dashed rgba(255,255,255,0.12);
   background: rgba(0,0,0,0.18);
-  display: grid;
-  place-items: center;
+  display: block;
   color: rgba(255,255,255,0.65);
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+}
+
+.adSlot .adsbygoogle {
+  display: block !important;
+  width: 100% !important;
+  min-height: 90px;
 }
 
 canvas#game {
