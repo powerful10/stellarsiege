@@ -433,11 +433,12 @@ function routeForRunState() {
 
 function routeForUiState(next) {
   if (next === STATE.MENU) return "/game/index.html";
-  if (next === STATE.HANGAR) return "/game/hangar";
-  if (next === STATE.LEADERBOARD) return "/game/leaderboard";
-  if (next === STATE.CAMPAIGN) return "/game/campaign";
-  if (next === STATE.ONLINE) return PORTAL_MODE ? "/game/index.html" : "/game/onlinematch";
-  if (next === STATE.ACCOUNT) return PORTAL_MODE ? "/game/index.html" : "/game/account";
+  // Keep menu overlays on one stable URL to avoid mobile deep-link traps/cache confusion.
+  if (next === STATE.HANGAR) return "/game/index.html";
+  if (next === STATE.LEADERBOARD) return "/game/index.html";
+  if (next === STATE.CAMPAIGN) return "/game/index.html";
+  if (next === STATE.ONLINE) return "/game/index.html";
+  if (next === STATE.ACCOUNT) return "/game/index.html";
   if (next === STATE.RUN || next === STATE.PICK || next === STATE.OVER) return routeForRunState();
   return null;
 }
