@@ -1657,13 +1657,21 @@ body[data-state="over"] .topRight {
   display: none;
 }
 
+body.hangar-open .topLeft,
+body.hangar-open .topCenterBrand,
+body.hangar-open .topRight {
+  display: none !important;
+}
+
 @media (pointer: coarse) {
   #hangar {
     z-index: 25;
-  }
-
-  #hangar {
+    display: block;
     align-items: stretch;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
   }
 
   #hangar .panel.panel--wide {
@@ -1671,40 +1679,52 @@ body[data-state="over"] .topRight {
     max-width: 100vw;
     min-height: 100vh;
     min-height: 100dvh;
-    max-height: 100vh;
-    max-height: 100dvh;
+    max-height: none;
     border-radius: 0;
-    padding: 12px 10px 22px;
-    overflow-y: auto;
-    overflow-x: hidden;
+    margin: 0;
+    padding: calc(10px + env(safe-area-inset-top)) 10px calc(22px + env(safe-area-inset-bottom));
+    overflow: visible;
   }
 
   #hangar .panelTop {
     position: sticky;
     top: 0;
-    z-index: 2;
-    background: rgba(10, 15, 35, 0.95);
-    padding: 8px 4px 10px;
-    margin-bottom: 10px;
+    z-index: 3;
+    background: rgba(10, 15, 35, 0.98);
+    padding: 8px 2px 10px;
+    margin: 0 0 10px;
     border-bottom: 1px solid rgba(255,255,255,0.08);
   }
 
   #hangar .panelTop h2 {
-    font-size: 26px;
+    font-size: clamp(22px, 7vw, 28px);
+  }
+
+  #hangar .panelTop__right {
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
   }
 
   #hangar .hangarGrid {
     grid-template-columns: 1fr;
     gap: 10px;
+    padding-bottom: 16px;
   }
 
   #hangar .card {
     padding: 10px;
     border-radius: 12px;
+    overflow: visible;
+  }
+
+  #hangar .card h3 {
+    margin-bottom: 8px;
+    font-size: 22px;
   }
 
   #hangar .shipModel {
-    height: min(34vh, 230px);
+    height: clamp(150px, 34vh, 220px);
     margin: 8px 0;
   }
 
@@ -1726,16 +1746,29 @@ body[data-state="over"] .topRight {
     border-radius: 10px;
     font-size: 13px;
     line-height: 1.2;
+    padding: 10px 8px;
     white-space: normal;
     word-break: break-word;
   }
 
+  #hangar .stats {
+    gap: 4px;
+  }
+
   #hangar .stats .statRow {
     font-size: 12px;
+    gap: 8px;
+    align-items: flex-start;
+  }
+
+  #hangar .stats .statRow span:last-child {
+    text-align: right;
+    max-width: 58%;
   }
 
   #hangar .statBarRow {
-    grid-template-columns: 56px 1fr;
+    grid-template-columns: 62px 1fr;
+    gap: 8px;
     font-size: 11px;
   }
 
@@ -1748,6 +1781,7 @@ body[data-state="over"] .topRight {
   #hangar .upgRow {
     grid-template-columns: 1fr;
     gap: 8px;
+    padding: 10px;
   }
 
   #hangar .upgRow .btn {
@@ -1773,13 +1807,42 @@ body[data-state="over"] .topRight {
     width: 100%;
   }
 
-  #hangar .panelTop__right {
-    gap: 6px;
-  }
-
   #hangar #pilotPill {
     font-size: 10px;
     padding: 5px 8px;
+  }
+}
+
+@media (max-width: 420px) and (pointer: coarse) {
+  #hangar .panel.panel--wide {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+
+  #hangar .panelTop {
+    position: static;
+    padding-top: 4px;
+  }
+
+  #hangar .panelTop h2 {
+    font-size: 24px;
+  }
+
+  #hangar .panelTop__right {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  #hangar #pilotPill {
+    display: none;
+  }
+
+  #hangar .shipPicker {
+    grid-template-columns: 1fr;
+  }
+
+  #hangar .statBarRow {
+    grid-template-columns: 56px 1fr;
   }
 }
 

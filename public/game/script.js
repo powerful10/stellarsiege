@@ -528,6 +528,7 @@ function showFullscreenHint() {
 function setState(next) {
   state = next;
   document.body.setAttribute("data-state", next);
+  document.body.classList.toggle("hangar-open", next === STATE.HANGAR);
 
   menuEl.classList.toggle("hidden", next !== STATE.MENU);
   hangarEl.classList.toggle("hidden", next !== STATE.HANGAR);
