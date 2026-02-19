@@ -45,14 +45,24 @@ const ADS = {
     typeof window.ADS_CONFIG === "object" && window.ADS_CONFIG
       ? String(window.ADS_CONFIG.provider || "none").toLowerCase()
       : "none",
+  sessionCap: Math.max(
+    1,
+    Math.floor(
+      Number(
+        typeof window.ADS_CONFIG === "object" && window.ADS_CONFIG
+          ? window.ADS_CONFIG.sessionRewardCap
+          : 5
+      ) || 5
+    )
+  ),
   dailyCap: Math.max(
     1,
     Math.floor(
       Number(
         typeof window.ADS_CONFIG === "object" && window.ADS_CONFIG
           ? window.ADS_CONFIG.dailyRewardCap
-          : 5
-      ) || 5
+          : 20
+      ) || 20
     )
   ),
   cooldownMs: Math.max(
@@ -128,6 +138,7 @@ function must(id) {
 }
 
 lockMobileZoom();
+if (PORTAL_MODE) document.body.classList.add("portal-mode");
 
 // HUD
 const hudEl = must("hud");
@@ -150,6 +161,7 @@ const onlineEl = must("online");
 const upgradePickEl = must("upgradePick");
 const gameoverEl = must("gameover");
 const rotateOverlayEl = must("rotateOverlay");
+const dailyRewardEl = must("dailyReward");
 
 // Menu buttons
 const playSurvivalBtn = must("playSurvivalBtn");
@@ -167,11 +179,18 @@ const statsBoxEl = must("statsBox");
 const shipPickerEl = must("shipPicker");
 const upgradeListEl = must("upgradeList");
 const shipModelEl = must("shipModel");
+const tierT1Btn = must("tierT1Btn");
+const tierT2Btn = must("tierT2Btn");
+const tierT3Btn = must("tierT3Btn");
+const unlockFxEl = must("unlockFx");
 const buy100Btn = must("buy100");
 const buy550Btn = must("buy550");
 const buyCredits10kBtn = must("buyCredits10k");
 const buyCredits65kBtn = must("buyCredits65k");
 const convertBtn = must("convertBtn");
+const hangarAdCreditsBtn = must("hangarAdCreditsBtn");
+const hangarAdCrystalsBtn = must("hangarAdCrystalsBtn");
+const storeCardEl = must("storeCard");
 
 // Leaderboard UI
 const backFromLeaderboardBtn = must("backFromLeaderboardBtn");
@@ -203,6 +222,10 @@ const gameoverTitleEl = must("gameoverTitle");
 const gameoverSubEl = must("gameoverSub");
 const restartBtn = must("restartBtn");
 const toMenuBtn = must("toMenuBtn");
+const shareScoreBtn = must("shareScoreBtn");
+const copyLinkBtn = must("copyLinkBtn");
+const challengeFriendBtn = must("challengeFriendBtn");
+const newRecordBadgeEl = must("newRecordBadge");
 const fsHintEl = must("fsHint");
 const adRewardBoxEl = must("adRewardBox");
 const adRewardTextEl = must("adRewardText");
@@ -210,6 +233,8 @@ const adRewardBtn = must("adRewardBtn");
 const infoOverlayEl = must("infoOverlay");
 const infoCloseBtn = must("infoCloseBtn");
 const infoFullscreenBtn = must("infoFullscreenBtn");
+const landscapeHintEl = must("landscapeHint");
+const toastEl = must("toast");
 
 // Hamburger menu
 const menuBtn = must("menuBtn");
@@ -233,6 +258,11 @@ const topAvatarFallback = must("topAvatarFallback");
 const topSignOutBtn = must("topSignOutBtn");
 const topCreditsEl = must("topCredits");
 const topCrystalsEl = must("topCrystals");
+if (PORTAL_MODE) {
+  topSignInBtn.classList.add("hidden");
+  topAccountBtn.classList.add("hidden");
+  topSignOutBtn.classList.add("hidden");
+}
 
 // Touch controls
 const touchShootBtn = must("touchShoot");
@@ -247,6 +277,23 @@ const accountBoxEl = must("accountBox");
 const accountSyncBtn = must("accountSyncBtn");
 const accountToOnlineBtn = must("accountToOnlineBtn");
 const accountSignOutBtn = must("accountSignOutBtn");
+const missionBoardEl = must("missionBoard");
+
+// Daily reward UI
+const dailyRewardSummaryEl = must("dailyRewardSummary");
+const dailyRewardLadderEl = must("dailyRewardLadder");
+const dailyClaimBtn = must("dailyClaimBtn");
+const dailyDoubleBtn = must("dailyDoubleBtn");
+const dailyCloseBtn = must("dailyCloseBtn");
+
+// Boot loading UI
+const bootLoaderEl = must("bootLoader");
+const bootLoaderTextEl = must("bootLoaderText");
+const bootLoaderFillEl = must("bootLoaderFill");
+const bootStartBtn = must("bootStartBtn");
+if (PORTAL_MODE) {
+  tabGlobalBtn.classList.add("hidden");
+}
 
 // Canvas
 const uiEl = must("ui");
@@ -255,6 +302,30 @@ const canvas = must("game");
 const ctx = canvas.getContext("2d");
 
 let WORLD = { width: 960, height: 600 };
+const QUERY = new URLSearchParams(window.location.search);
+const PORTAL_MODE = QUERY.get("portal") === "1";
+
+const BOOT = {
+  complete: false,
+  started: false,
+  progress: 0,
+};
+
+const SESSION = {
+  rewardedAdsClaimed: 0,
+  creditsEarned: 0,
+  startedAt: Date.now(),
+  dailyRewardPromptedAt: "",
+};
+
+let forcedPreviewTier = null;
+let unlockFxTimer = null;
+let currentGameShipKey = "";
+let game3DReady = false;
+
+function tierFromIndex(idx) {
+  return Math.max(1, Math.min(3, Math.floor(Number(idx || 1))));
+}
 
 const MODE = {
   SURVIVAL: "survival",
@@ -279,23 +350,21 @@ let activeMode = MODE.SURVIVAL;
 let activeCampaignMissionId = null;
 let paused = false;
 let hangarAuthWaitScheduled = false;
+let routeBooting = true;
 
 function setPaused(next) {
   paused = next;
 }
 
 function needsLandscape() {
-  return window.matchMedia && window.matchMedia("(orientation: portrait)").matches;
+  return Boolean(window.matchMedia && window.matchMedia("(orientation: portrait)").matches);
 }
 
 function updateRotateOverlay() {
-  const shouldBlock = (state === STATE.RUN || pendingStart) && needsLandscape();
-  if (shouldBlock) {
-    rotateReadyAt = 0;
-  }
-  rotateOverlayEl.classList.toggle("hidden", !shouldBlock);
-  if (shouldBlock) setPaused(true);
-  return !shouldBlock;
+  const showHint = state === STATE.RUN && needsLandscape();
+  rotateOverlayEl.classList.add("hidden");
+  landscapeHintEl.classList.toggle("hidden", !showHint);
+  return true;
 }
 
 let pendingStart = null;
@@ -309,6 +378,62 @@ function updateTouchControlsVisibility() {
     (activeMode === MODE.SURVIVAL || activeMode === MODE.CAMPAIGN || activeMode === MODE.DUEL);
   touchControlsEl.classList.toggle("touchControls--active", show);
   touchControlsEl.classList.toggle("hidden", !show);
+}
+
+function normalizePath(pathname) {
+  const raw = String(pathname || "/");
+  if (raw === "/") return "/";
+  return raw.endsWith("/") ? raw.slice(0, -1) : raw;
+}
+
+function routeCampaignLevel(pathname) {
+  const match =
+    pathname.match(/^\/game\/campaign\/start\/level(\d+)$/i) ||
+    pathname.match(/^\/game\/campaign\/start\/(\d+)$/i);
+  if (!match) return null;
+  const parsed = Number(match[1]);
+  if (!Number.isFinite(parsed) || parsed < 1) return null;
+  return Math.floor(parsed);
+}
+
+function routeForRunState() {
+  if (activeMode === MODE.SURVIVAL) return "/game/survival/start";
+  if (activeMode === MODE.CAMPAIGN) {
+    const missionId = Math.max(
+      1,
+      Math.floor(
+        Number(activeCampaignMissionId || (run.campaign && run.campaign.missionId) || SAVE.profile.campaignUnlocked || 1)
+      )
+    );
+    return `/game/campaign/start/level${missionId}`;
+  }
+  if (activeMode === MODE.DUEL) return "/game/onlinematch/start";
+  return "/game/index.html";
+}
+
+function routeForUiState(next) {
+  if (next === STATE.MENU) return "/game/index.html";
+  if (next === STATE.HANGAR) return "/game/hangar";
+  if (next === STATE.LEADERBOARD) return "/game/leaderboard";
+  if (next === STATE.CAMPAIGN) return "/game/campaign";
+  if (next === STATE.ONLINE) return PORTAL_MODE ? "/game/index.html" : "/game/onlinematch";
+  if (next === STATE.ACCOUNT) return "/game/account";
+  if (next === STATE.RUN || next === STATE.PICK || next === STATE.OVER) return routeForRunState();
+  return null;
+}
+
+function syncRouteWithState(next) {
+  try {
+    const target = routeForUiState(next);
+    if (!target) return;
+    const current = normalizePath(window.location.pathname);
+    const currentSearch = window.location.search || "";
+    const nextSearch = PORTAL_MODE ? "?portal=1" : "";
+    if (current === target && currentSearch === nextSearch) return;
+    window.history.replaceState({}, document.title, `${target}${nextSearch}`);
+  } catch {
+    // ignore history errors
+  }
 }
 
 function setupFullscreenToggle({ element }) {
@@ -397,11 +522,27 @@ function setState(next) {
 
   // Auto-pause on any overlay
   setPaused(next !== STATE.RUN);
+  if (next !== STATE.RUN && next !== STATE.PICK) {
+    game3DReady = false;
+    currentGameShipKey = "";
+  }
   updateTouchControlsVisibility();
   updateRotateOverlay();
+  if (next === STATE.MENU) {
+    claimReadyMissions();
+    renderMissionBoard();
+    maybeOpenDailyRewardPopup(false);
+  }
+  if (!routeBooting) syncRouteWithState(next);
 }
 
 function setTopAuthUi({ signedIn, displayName, photoUrl }) {
+  if (PORTAL_MODE) {
+    topSignInBtn.classList.add("hidden");
+    topAccountBtn.classList.add("hidden");
+    topSignOutBtn.classList.add("hidden");
+    return;
+  }
   topSignInBtn.classList.toggle("hidden", signedIn);
   topAccountBtn.classList.toggle("hidden", !signedIn);
   topSignOutBtn.classList.toggle("hidden", !signedIn);
@@ -485,10 +626,14 @@ function resizeCanvas() {
   uiEl.style.width = `${rect.width}px`;
   uiEl.style.height = `${rect.height}px`;
   WORLD = { width: rect.width, height: rect.height };
+  if (window.ship3D && typeof window.ship3D.resizeGame === "function") {
+    window.ship3D.resizeGame(rect.width, rect.height);
+  }
 }
 
 window.addEventListener("resize", resizeCanvas);
 window.addEventListener("resize", updateFullscreenButtonVisibility);
+window.addEventListener("resize", updateRotateOverlay);
 resizeCanvas();
 
 const TAU = Math.PI * 2;
@@ -686,7 +831,7 @@ canvas.addEventListener("touchend", () => {
 // Persistent save (local demo)
 // -----------------------------
 
-const SAVE_KEY = "stellar_siege_save_v4";
+const SAVE_KEY = "stellar_siege_save_v5";
 
 function defaultSave() {
   return {
@@ -707,12 +852,23 @@ function defaultSave() {
       onlineGames: 0,
       onlineWins: 0,
       onlineLosses: 0,
+      totalKills: 0,
+      totalRunSeconds: 0,
       adRewardsDay: "",
       adRewardsClaimed: 0,
       adRewardLastAt: 0,
+      adIntegrityLastAt: 0,
+      dailyClaimTimestamp: 0,
+      dailyStreakDay: 0,
+      missionDayKey: "",
+      missionWeekKey: "",
       updatedAt: 0,
     },
     ships: {},
+    missions: {
+      daily: [],
+      weekly: [],
+    },
     leaderboard: [],
   };
 }
@@ -728,6 +884,7 @@ function loadSave() {
       ...parsed,
       profile: { ...base.profile, ...(parsed.profile || {}) },
       ships: { ...base.ships, ...(parsed.ships || {}) },
+      missions: { ...base.missions, ...(parsed.missions || {}) },
       leaderboard: Array.isArray(parsed.leaderboard) ? parsed.leaderboard : base.leaderboard,
     };
   } catch {
@@ -767,71 +924,143 @@ const SHIPS = [
   {
     id: "striker",
     name: "Striker",
-    rarity: "Free",
-    priceCredits: 6500,
+    rarity: "Common",
+    priceCredits: 6400,
     priceCrystals: 0,
     base: {
-      speed: 300,
-      bulletSpeed: 590,
-      damage: 1.08,
-      fireRate: 0.14,
+      speed: 304,
+      bulletSpeed: 610,
+      damage: 1.1,
+      fireRate: 0.138,
       shieldMax: 100,
       shieldRegen: 3.4,
-      hullMax: 105,
+      hullMax: 102,
       pierce: 0,
       droneCount: 0,
     },
   },
   {
-    id: "ranger",
-    name: "Ranger",
-    rarity: "Earned",
-    priceCredits: 22000,
+    id: "tank",
+    name: "Tank",
+    rarity: "Common",
+    priceCredits: 9800,
     priceCrystals: 0,
     base: {
-      speed: 305,
-      bulletSpeed: 620,
-      damage: 1.16,
-      fireRate: 0.132,
-      shieldMax: 112,
-      shieldRegen: 3.6,
-      hullMax: 118,
+      speed: 262,
+      bulletSpeed: 560,
+      damage: 1.2,
+      fireRate: 0.152,
+      shieldMax: 148,
+      shieldRegen: 4.2,
+      hullMax: 152,
+      pierce: 0,
+      droneCount: 0,
+    },
+  },
+  {
+    id: "sniper",
+    name: "Sniper",
+    rarity: "Earned",
+    priceCredits: 16800,
+    priceCrystals: 0,
+    base: {
+      speed: 286,
+      bulletSpeed: 720,
+      damage: 1.34,
+      fireRate: 0.165,
+      shieldMax: 92,
+      shieldRegen: 2.9,
+      hullMax: 98,
+      pierce: 2,
+      droneCount: 0,
+    },
+  },
+  {
+    id: "bomber",
+    name: "Bomber",
+    rarity: "Earned",
+    priceCredits: 23500,
+    priceCrystals: 70,
+    base: {
+      speed: 272,
+      bulletSpeed: 590,
+      damage: 1.48,
+      fireRate: 0.176,
+      shieldMax: 116,
+      shieldRegen: 3.1,
+      hullMax: 124,
       pierce: 1,
       droneCount: 0,
     },
   },
   {
-    id: "astra",
-    name: "Astra",
+    id: "interceptor",
+    name: "Interceptor",
     rarity: "Earned",
-    priceCredits: 0,
-    priceCrystals: 120,
+    priceCredits: 36000,
+    priceCrystals: 0,
     base: {
-      speed: 315,
-      bulletSpeed: 640,
-      damage: 1.22,
-      fireRate: 0.122,
-      shieldMax: 108,
-      shieldRegen: 3.5,
-      hullMax: 112,
+      speed: 340,
+      bulletSpeed: 650,
+      damage: 1.12,
+      fireRate: 0.118,
+      shieldMax: 98,
+      shieldRegen: 3.1,
+      hullMax: 102,
+      pierce: 0,
+      droneCount: 0,
+    },
+  },
+  {
+    id: "drone_carrier",
+    name: "Drone Carrier",
+    rarity: "Rare",
+    priceCredits: 52000,
+    priceCrystals: 135,
+    base: {
+      speed: 282,
+      bulletSpeed: 610,
+      damage: 1.15,
+      fireRate: 0.144,
+      shieldMax: 118,
+      shieldRegen: 3.8,
+      hullMax: 126,
       pierce: 1,
       droneCount: 1,
     },
   },
   {
+    id: "stealth",
+    name: "Stealth",
+    rarity: "Rare",
+    priceCredits: 79000,
+    priceCrystals: 190,
+    base: {
+      speed: 326,
+      bulletSpeed: 680,
+      damage: 1.28,
+      fireRate: 0.128,
+      shieldMax: 108,
+      shieldRegen: 3.3,
+      hullMax: 106,
+      pierce: 1,
+      droneCount: 0,
+    },
+  },
+  {
     id: "warden",
     name: "Warden",
-    rarity: "Premium",
-    priceCredits: 0,
-    priceCrystals: 320,
+    rarity: "Epic",
+    priceCredits: 125000,
+    priceCrystals: 260,
     base: {
-      speed: 292,
-      bulletSpeed: 640,
-      damage: 1.32,
-      fireRate: 0.122,
-      shieldMax: 132,
-      shieldRegen: 4.2,
-      hullMax: 132,
+      speed: 296,
+      bulletSpeed: 660,
+      damage: 1.45,
+      fireRate: 0.12,
+      shieldMax: 156,
+      shieldRegen: 4.6,
+      hullMax: 162,
       pierce: 1,
       droneCount: 0,
     },
@@ -839,17 +1068,35 @@ const SHIPS = [
   {
     id: "valkyrie",
     name: "Valkyrie",
-    rarity: "Premium",
+    rarity: "Legendary",
     priceCredits: 0,
-    priceCrystals: 650,
+    priceCrystals: 480,
     base: {
-      speed: 325,
-      bulletSpeed: 700,
-      damage: 1.48,
+      speed: 334,
+      bulletSpeed: 730,
+      damage: 1.58,
       fireRate: 0.108,
-      shieldMax: 140,
+      shieldMax: 145,
       shieldRegen: 4.4,
-      hullMax: 140,
+      hullMax: 148,
+      pierce: 2,
+      droneCount: 1,
+    },
+  },
+  {
+    id: "nova_revenant",
+    name: "Nova Revenant",
+    rarity: "Mythic",
+    priceCredits: 250000,
+    priceCrystals: 900,
+    base: {
+      speed: 332,
+      bulletSpeed: 760,
+      damage: 1.72,
+      fireRate: 0.102,
+      shieldMax: 168,
+      shieldRegen: 4.8,
+      hullMax: 172,
       pierce: 2,
       droneCount: 2,
     },
@@ -859,10 +1106,15 @@ const SHIPS = [
 const SHIP_STYLES = {
   scout: { main: "#1de2c4", accent: "#0ea5e9" },
   striker: { main: "#60a5fa", accent: "#93c5fd" },
-  ranger: { main: "#34d399", accent: "#a7f3d0" },
-  astra: { main: "#f472b6", accent: "#fbcfe8" },
-  warden: { main: "#f59e0b", accent: "#fde68a" },
-  valkyrie: { main: "#f97316", accent: "#fed7aa" },
+  tank: { main: "#f59e0b", accent: "#fde68a" },
+  sniper: { main: "#f97316", accent: "#fb923c" },
+  bomber: { main: "#f43f5e", accent: "#fb7185" },
+  interceptor: { main: "#22d3ee", accent: "#67e8f9" },
+  drone_carrier: { main: "#8b5cf6", accent: "#c4b5fd" },
+  stealth: { main: "#64748b", accent: "#e2e8f0" },
+  warden: { main: "#84cc16", accent: "#bef264" },
+  valkyrie: { main: "#fb923c", accent: "#fdba74" },
+  nova_revenant: { main: "#e879f9", accent: "#f0abfc" },
 };
 
 function shipById(id) {
@@ -872,11 +1124,16 @@ function shipById(id) {
 function shipSvg(shipId, tier) {
   const palettes = {
     scout: ["#1de2c4", "#6ee7b7", "#0ea5e9"],
-    striker: ["#f97316", "#fb923c", "#f59e0b"],
-    ranger: ["#22c55e", "#4ade80", "#16a34a"],
-    astra: ["#f472b6", "#fb7185", "#e879f9"],
-    warden: ["#60a5fa", "#38bdf8", "#1d4ed8"],
-    valkyrie: ["#f59e0b", "#f97316", "#facc15"],
+    striker: ["#60a5fa", "#93c5fd", "#38bdf8"],
+    tank: ["#f59e0b", "#fde68a", "#f97316"],
+    sniper: ["#f97316", "#fb923c", "#fdba74"],
+    bomber: ["#f43f5e", "#fb7185", "#e11d48"],
+    interceptor: ["#22d3ee", "#67e8f9", "#0891b2"],
+    drone_carrier: ["#8b5cf6", "#c4b5fd", "#6d28d9"],
+    stealth: ["#64748b", "#e2e8f0", "#334155"],
+    warden: ["#84cc16", "#bef264", "#65a30d"],
+    valkyrie: ["#fb923c", "#fdba74", "#ea580c"],
+    nova_revenant: ["#e879f9", "#f0abfc", "#a21caf"],
   };
   const colors = palettes[shipId] || ["#1de2c4", "#6ee7b7", "#0ea5e9"];
   const c1 = colors[0];
@@ -973,9 +1230,14 @@ function migrateSave() {
   SHIPS.forEach((s) => ensureShipState(s.id));
 
   // Fix selected ship
+  const legacyShipMap = {
+    ranger: "interceptor",
+    astra: "drone_carrier",
+  };
   const selected = SAVE.profile && SAVE.profile.selectedShipId ? SAVE.profile.selectedShipId : "scout";
-  const exists = SHIPS.some((s) => s.id === selected);
-  SAVE.profile.selectedShipId = exists ? selected : "scout";
+  const mapped = legacyShipMap[selected] || selected;
+  const exists = SHIPS.some((s) => s.id === mapped);
+  SAVE.profile.selectedShipId = exists ? mapped : "scout";
 
   if (!SAVE.profile.updatedAt) SAVE.profile.updatedAt = 0;
   if (!Number.isFinite(Number(SAVE.profile.crystalsShadow))) SAVE.profile.crystalsShadow = SAVE.profile.crystals || 0;
@@ -986,6 +1248,8 @@ function migrateSave() {
     "onlineGames",
     "onlineWins",
     "onlineLosses",
+    "totalKills",
+    "totalRunSeconds",
     "adRewardsClaimed",
   ];
   statKeys.forEach((key) => {
@@ -993,11 +1257,237 @@ function migrateSave() {
     SAVE.profile[key] = Number.isFinite(value) && value >= 0 ? Math.floor(value) : 0;
   });
   if (!Number.isFinite(Number(SAVE.profile.adRewardLastAt))) SAVE.profile.adRewardLastAt = 0;
+  if (!Number.isFinite(Number(SAVE.profile.adIntegrityLastAt))) SAVE.profile.adIntegrityLastAt = 0;
   if (typeof SAVE.profile.adRewardsDay !== "string") SAVE.profile.adRewardsDay = "";
+  if (!Number.isFinite(Number(SAVE.profile.dailyClaimTimestamp))) SAVE.profile.dailyClaimTimestamp = 0;
+  if (!Number.isFinite(Number(SAVE.profile.dailyStreakDay))) SAVE.profile.dailyStreakDay = 0;
+  if (typeof SAVE.profile.missionDayKey !== "string") SAVE.profile.missionDayKey = "";
+  if (typeof SAVE.profile.missionWeekKey !== "string") SAVE.profile.missionWeekKey = "";
+  if (!SAVE.missions || typeof SAVE.missions !== "object") SAVE.missions = { daily: [], weekly: [] };
+  if (!Array.isArray(SAVE.missions.daily)) SAVE.missions.daily = [];
+  if (!Array.isArray(SAVE.missions.weekly)) SAVE.missions.weekly = [];
   saveNow();
 }
 
 migrateSave();
+
+const DAILY_REWARD_LADDER = [
+  { day: 1, credits: 500, crystals: 0 },
+  { day: 2, credits: 700, crystals: 0 },
+  { day: 3, credits: 900, crystals: 0 },
+  { day: 4, credits: 1200, crystals: 0 },
+  { day: 5, credits: 1500, crystals: 0 },
+  { day: 6, credits: 2000, crystals: 0 },
+  { day: 7, credits: 2500, crystals: 50 },
+];
+
+const DAILY_MISSION_POOL = [
+  { id: "daily_survive_5m", title: "Survive 5 minutes", type: "run_seconds", target: 300, rewardCredits: 900, rewardCrystals: 0 },
+  { id: "daily_kills_200", title: "Defeat 200 enemies", type: "kills", target: 200, rewardCredits: 1250, rewardCrystals: 1 },
+  { id: "daily_wave_15", title: "Reach wave 15", type: "wave", target: 15, rewardCredits: 1500, rewardCrystals: 2 },
+];
+
+const WEEKLY_MISSION_POOL = [
+  { id: "weekly_kills_1200", title: "Defeat 1200 enemies", type: "kills", target: 1200, rewardCredits: 8500, rewardCrystals: 12 },
+  { id: "weekly_survive_45m", title: "Survive 45 minutes total", type: "run_seconds", target: 2700, rewardCredits: 7000, rewardCrystals: 8 },
+  { id: "weekly_wave_25", title: "Reach wave 25", type: "wave", target: 25, rewardCredits: 9500, rewardCrystals: 15 },
+];
+
+function localDayKey(ts = Date.now()) {
+  const d = new Date(ts);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function localWeekKey(ts = Date.now()) {
+  const d = new Date(ts);
+  const dt = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const dayNum = dt.getUTCDay() || 7;
+  dt.setUTCDate(dt.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(dt.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil((((dt - yearStart) / 86400000) + 1) / 7);
+  return `${dt.getUTCFullYear()}-W${String(weekNo).padStart(2, "0")}`;
+}
+
+function seededPick(pool, count, seedText) {
+  const list = pool.slice();
+  let seed = 0;
+  for (let i = 0; i < seedText.length; i += 1) seed = (seed * 31 + seedText.charCodeAt(i)) >>> 0;
+  const out = [];
+  while (out.length < count && list.length > 0) {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    const idx = seed % list.length;
+    out.push(list.splice(idx, 1)[0]);
+  }
+  return out;
+}
+
+function cloneMission(def, periodKey) {
+  return {
+    key: `${periodKey}:${def.id}`,
+    id: def.id,
+    title: def.title,
+    type: def.type,
+    target: def.target,
+    progress: 0,
+    rewardCredits: def.rewardCredits,
+    rewardCrystals: def.rewardCrystals,
+    claimed: false,
+  };
+}
+
+function ensureMissionSet() {
+  const today = localDayKey();
+  const week = localWeekKey();
+
+  if (SAVE.profile.missionDayKey !== today || !Array.isArray(SAVE.missions.daily) || SAVE.missions.daily.length === 0) {
+    SAVE.profile.missionDayKey = today;
+    const dailyDefs = seededPick(DAILY_MISSION_POOL, 2, `${today}:daily`);
+    SAVE.missions.daily = dailyDefs.map((def) => cloneMission(def, today));
+  }
+
+  if (SAVE.profile.missionWeekKey !== week || !Array.isArray(SAVE.missions.weekly) || SAVE.missions.weekly.length === 0) {
+    SAVE.profile.missionWeekKey = week;
+    const weeklyDefs = seededPick(WEEKLY_MISSION_POOL, 2, `${week}:weekly`);
+    SAVE.missions.weekly = weeklyDefs.map((def) => cloneMission(def, week));
+  }
+}
+
+function missionProgressLabel(m) {
+  const cur = Math.min(m.target, Math.floor(m.progress || 0));
+  return `${cur}/${m.target}`;
+}
+
+function renderMissionBoard() {
+  if (!missionBoardEl) return;
+  ensureMissionSet();
+  const sections = [];
+  const dailyRows = (SAVE.missions.daily || []).map((m) => {
+    const done = (m.progress || 0) >= m.target;
+    const reward = `+${m.rewardCredits} credits${m.rewardCrystals ? `, +${m.rewardCrystals} crystals` : ""}`;
+    return `<div class="missionBoard__row"><strong>${m.title}</strong><span>${missionProgressLabel(m)} · ${done ? (m.claimed ? "Claimed" : "Ready to claim") : "In progress"}</span><span>${reward}</span></div>`;
+  }).join("");
+  sections.push(`<div class="missionBoard__title">Daily Missions</div>${dailyRows}`);
+
+  const weeklyRows = (SAVE.missions.weekly || []).map((m) => {
+    const done = (m.progress || 0) >= m.target;
+    const reward = `+${m.rewardCredits} credits${m.rewardCrystals ? `, +${m.rewardCrystals} crystals` : ""}`;
+    return `<div class="missionBoard__row"><strong>${m.title}</strong><span>${missionProgressLabel(m)} · ${done ? (m.claimed ? "Claimed" : "Ready to claim") : "In progress"}</span><span>${reward}</span></div>`;
+  }).join("");
+  sections.push(`<div class="missionBoard__title">Weekly Missions</div>${weeklyRows}`);
+  missionBoardEl.innerHTML = sections.join("");
+}
+
+function claimReadyMissions() {
+  ensureMissionSet();
+  let gainedCredits = 0;
+  let gainedCrystals = 0;
+  const all = [...(SAVE.missions.daily || []), ...(SAVE.missions.weekly || [])];
+  all.forEach((m) => {
+    if (m.claimed) return;
+    if ((m.progress || 0) < m.target) return;
+    m.claimed = true;
+    gainedCredits += Number(m.rewardCredits || 0);
+    gainedCrystals += Number(m.rewardCrystals || 0);
+  });
+  if (gainedCredits > 0 || gainedCrystals > 0) {
+    SAVE.profile.credits += gainedCredits;
+    SAVE.profile.crystals += gainedCrystals;
+    SAVE.profile.crystalsShadow = Math.max(SAVE.profile.crystalsShadow || 0, SAVE.profile.crystals);
+    SAVE.profile.updatedAt = nowMs();
+    saveNow();
+    updateTopBar();
+    showToast(`Mission rewards: +${gainedCredits} credits${gainedCrystals ? `, +${gainedCrystals} crystals` : ""}`);
+  }
+  renderMissionBoard();
+}
+
+function applyMissionProgress(summary) {
+  ensureMissionSet();
+  const updateOne = (m) => {
+    if (!m || m.claimed) return;
+    if (m.type === "kills") m.progress = Math.min(m.target, (m.progress || 0) + (summary.kills || 0));
+    if (m.type === "run_seconds") m.progress = Math.min(m.target, (m.progress || 0) + (summary.seconds || 0));
+    if (m.type === "wave") m.progress = Math.max(m.progress || 0, summary.wave || 0);
+  };
+  (SAVE.missions.daily || []).forEach(updateOne);
+  (SAVE.missions.weekly || []).forEach(updateOne);
+}
+
+function dailyRewardState() {
+  const now = nowMs();
+  const today = localDayKey(now);
+  const lastClaim = Number(SAVE.profile.dailyClaimTimestamp || 0);
+  if (!lastClaim) {
+    return { claimable: true, today, streakDay: 1, alreadyClaimed: false, reset: true };
+  }
+  const lastDay = localDayKey(lastClaim);
+  if (lastDay === today) {
+    const existing = Math.max(1, Number(SAVE.profile.dailyStreakDay || 1));
+    return { claimable: false, today, streakDay: existing, alreadyClaimed: true, reset: false };
+  }
+  const elapsed = now - lastClaim;
+  if (elapsed > 24 * 60 * 60 * 1000) {
+    return { claimable: true, today, streakDay: 1, alreadyClaimed: false, reset: true };
+  }
+  const nextDay = ((Math.max(1, Number(SAVE.profile.dailyStreakDay || 1))) % 7) + 1;
+  return { claimable: true, today, streakDay: nextDay, alreadyClaimed: false, reset: false };
+}
+
+function renderDailyRewardPopup() {
+  const st = dailyRewardState();
+  const canDouble = hasRewardedAdapter();
+  const ladderRows = DAILY_REWARD_LADDER.map((reward) => {
+    const isCurrent = reward.day === st.streakDay;
+    const isClaimed = reward.day < st.streakDay && !st.reset;
+    return `<div class="dailyLadder__item ${isCurrent ? "is-current" : ""} ${isClaimed ? "is-claimed" : ""}">
+      <strong>Day ${reward.day}</strong>
+      <span>+${reward.credits} credits${reward.crystals ? `, +${reward.crystals} crystals` : ""}</span>
+    </div>`;
+  }).join("");
+  dailyRewardLadderEl.innerHTML = ladderRows;
+  if (st.claimable) {
+    dailyRewardSummaryEl.textContent = st.reset
+      ? "Daily streak reset. Claim Day 1 now."
+      : `Daily streak day ${st.streakDay}. Claim your reward now.`;
+  } else {
+    dailyRewardSummaryEl.textContent = "Reward already claimed today. Come back tomorrow.";
+  }
+  dailyClaimBtn.disabled = !st.claimable;
+  dailyDoubleBtn.classList.toggle("hidden", !canDouble);
+  dailyDoubleBtn.disabled = !st.claimable || !canDouble;
+}
+
+function maybeOpenDailyRewardPopup(force = false) {
+  const st = dailyRewardState();
+  if (!st.claimable && !force) return;
+  const today = localDayKey();
+  if (!force && SESSION.dailyRewardPromptedAt === today) return;
+  SESSION.dailyRewardPromptedAt = today;
+  renderDailyRewardPopup();
+  dailyRewardEl.classList.remove("hidden");
+}
+
+function grantDailyReward(mult = 1) {
+  const st = dailyRewardState();
+  if (!st.claimable) return false;
+  const reward = DAILY_REWARD_LADDER.find((d) => d.day === st.streakDay) || DAILY_REWARD_LADDER[0];
+  const credits = Math.floor(reward.credits * mult);
+  const crystals = Math.floor(reward.crystals * mult);
+  SAVE.profile.credits += credits;
+  SAVE.profile.crystals += crystals;
+  SAVE.profile.crystalsShadow = Math.max(SAVE.profile.crystalsShadow || 0, SAVE.profile.crystals);
+  SAVE.profile.dailyClaimTimestamp = nowMs();
+  SAVE.profile.dailyStreakDay = st.streakDay;
+  SAVE.profile.updatedAt = nowMs();
+  saveNow();
+  updateTopBar();
+  showToast(`Daily reward claimed: +${credits} credits${crystals ? `, +${crystals} crystals` : ""}`);
+  dailyRewardEl.classList.add("hidden");
+  return true;
+}
 
 function xpForLevel(level) {
   const l = Math.max(1, level);
@@ -1015,7 +1505,7 @@ function computePermanentStats(shipId, upgradesOverride = null, xpOverride = nul
   const u = upgradesOverride || ensureShipState(ship.id).upgrades;
   const pilotLevel = levelFromXp(xpOverride != null ? xpOverride : SAVE.profile.xp);
   const levelBonus = Math.floor((pilotLevel - 1) / 4) * 0.15;
-  const eliteMult = 1 + u.elite * 0.06;
+  const eliteMult = 1 + u.elite * 0.04;
   return {
     pilotLevel,
     shipId: ship.id,
@@ -1039,7 +1529,7 @@ const PERM_UPGRADES = [
     desc: "Bullets deal more damage.",
     currency: "credits",
     max: 10,
-    cost: (lvl) => Math.floor(260 * Math.pow(1.38, lvl)),
+    cost: (lvl) => Math.floor(360 * Math.pow(1.42, lvl)),
   },
   {
     key: "fireRate",
@@ -1047,7 +1537,7 @@ const PERM_UPGRADES = [
     desc: "Shoot faster.",
     currency: "credits",
     max: 10,
-    cost: (lvl) => Math.floor(300 * Math.pow(1.36, lvl)),
+    cost: (lvl) => Math.floor(410 * Math.pow(1.4, lvl)),
   },
   {
     key: "bulletSpeed",
@@ -1055,7 +1545,7 @@ const PERM_UPGRADES = [
     desc: "Faster bullets hit more reliably.",
     currency: "credits",
     max: 8,
-    cost: (lvl) => Math.floor(210 * Math.pow(1.35, lvl)),
+    cost: (lvl) => Math.floor(300 * Math.pow(1.38, lvl)),
   },
   {
     key: "shieldMax",
@@ -1063,7 +1553,7 @@ const PERM_UPGRADES = [
     desc: "More shield HP.",
     currency: "credits",
     max: 10,
-    cost: (lvl) => Math.floor(250 * Math.pow(1.37, lvl)),
+    cost: (lvl) => Math.floor(350 * Math.pow(1.4, lvl)),
   },
   {
     key: "shieldRegen",
@@ -1071,7 +1561,7 @@ const PERM_UPGRADES = [
     desc: "Shield regenerates faster.",
     currency: "credits",
     max: 10,
-    cost: (lvl) => Math.floor(270 * Math.pow(1.35, lvl)),
+    cost: (lvl) => Math.floor(360 * Math.pow(1.38, lvl)),
   },
   {
     key: "hullMax",
@@ -1079,7 +1569,7 @@ const PERM_UPGRADES = [
     desc: "More hull HP.",
     currency: "credits",
     max: 10,
-    cost: (lvl) => Math.floor(250 * Math.pow(1.37, lvl)),
+    cost: (lvl) => Math.floor(340 * Math.pow(1.41, lvl)),
   },
   {
     key: "thrusters",
@@ -1087,7 +1577,7 @@ const PERM_UPGRADES = [
     desc: "Move faster.",
     currency: "credits",
     max: 10,
-    cost: (lvl) => Math.floor(220 * Math.pow(1.34, lvl)),
+    cost: (lvl) => Math.floor(300 * Math.pow(1.38, lvl)),
   },
   {
     key: "pierce",
@@ -1095,7 +1585,7 @@ const PERM_UPGRADES = [
     desc: "Bullets pierce more targets.",
     currency: "crystals",
     max: 3,
-    cost: (lvl) => Math.floor(80 * Math.pow(1.65, lvl)),
+    cost: (lvl) => Math.floor(95 * Math.pow(1.75, lvl)),
   },
   {
     key: "drone",
@@ -1103,15 +1593,15 @@ const PERM_UPGRADES = [
     desc: "Add an auto-firing drone.",
     currency: "crystals",
     max: 3,
-    cost: (lvl) => Math.floor(95 * Math.pow(1.7, lvl)),
+    cost: (lvl) => Math.floor(120 * Math.pow(1.82, lvl)),
   },
   {
     key: "elite",
     name: "Elite Core",
-    desc: "Crystal boost: increases most stats (pay-to-win).",
+    desc: "High-end tuning: moderate boost to core stats.",
     currency: "crystals",
     max: 5,
-    cost: (lvl) => Math.floor(140 * Math.pow(1.85, lvl)),
+    cost: (lvl) => Math.floor(170 * Math.pow(1.9, lvl)),
   },
 ];
 
@@ -1131,7 +1621,74 @@ function isAuthed() {
 // If Firebase is configured and we're hosted, we treat progression/purchases as account-based.
 // This keeps the "real" economy tied to a Google account (and lets you monetize safely).
 function progressionRequiresAuth() {
+  if (PORTAL_MODE) return false;
   return isHosted() && hasFirebaseConfig();
+}
+
+function showToast(message, durationMs = 2200) {
+  if (!toastEl) return;
+  toastEl.textContent = String(message || "");
+  toastEl.classList.remove("hidden");
+  toastEl.classList.add("toast--show");
+  if (showToast.timer) clearTimeout(showToast.timer);
+  showToast.timer = setTimeout(() => {
+    toastEl.classList.remove("toast--show");
+    toastEl.classList.add("hidden");
+  }, durationMs);
+}
+
+function buildRunSharePayload(score, wave) {
+  const safeScore = Math.max(0, Math.floor(Number(score || 0)));
+  const safeWave = Math.max(1, Math.floor(Number(wave || 1)));
+  const link =
+    `https://stellarsiege.vercel.app/?ref=share&utm_source=share&utm_campaign=runshare` +
+    `&score=${encodeURIComponent(safeScore)}&wave=${encodeURIComponent(safeWave)}`;
+  const text = `I scored ${safeScore} at wave ${safeWave}. Beat my run in Stellar Siege`;
+  return { link, text };
+}
+
+async function copyText(text) {
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(String(text));
+      return true;
+    }
+  } catch {
+    // ignore clipboard errors
+  }
+  try {
+    const tmp = document.createElement("textarea");
+    tmp.value = String(text);
+    tmp.setAttribute("readonly", "readonly");
+    tmp.style.position = "absolute";
+    tmp.style.left = "-9999px";
+    document.body.appendChild(tmp);
+    tmp.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(tmp);
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
+async function shareRunScore(score, wave, preferred = "native") {
+  const payload = buildRunSharePayload(score, wave);
+  const canNative = typeof navigator.share === "function";
+  if (preferred === "native" && canNative) {
+    try {
+      await navigator.share({
+        title: "Stellar Siege",
+        text: payload.text,
+        url: payload.link,
+      });
+      return { ok: true, method: "webshare" };
+    } catch {
+      // fallback below
+    }
+  }
+  const copied = await copyText(`${payload.text}\n${payload.link}`);
+  return copied ? { ok: true, method: "clipboard" } : { ok: false, method: "none" };
 }
 
 // -----------------------------
@@ -1153,6 +1710,10 @@ leaderboardBtn.addEventListener("click", () => {
   setState(STATE.LEADERBOARD);
 });
 onlineBtn.addEventListener("click", () => {
+  if (PORTAL_MODE) {
+    showToast("Online mode is disabled in portal build.");
+    return;
+  }
   onlineInit();
   setState(STATE.ONLINE);
 });
@@ -1282,6 +1843,30 @@ toMenuBtn.addEventListener("click", () => {
   setState(STATE.MENU);
 });
 
+shareScoreBtn.addEventListener("click", async () => {
+  const res = await shareRunScore(finalScoreEl.textContent, finalWaveEl.textContent, "native");
+  if (res.ok) {
+    showToast(res.method === "webshare" ? "Shared." : "Share text copied.");
+  } else {
+    showToast("Share unavailable right now.");
+  }
+});
+
+copyLinkBtn.addEventListener("click", async () => {
+  const payload = buildRunSharePayload(finalScoreEl.textContent, finalWaveEl.textContent);
+  const ok = await copyText(payload.link);
+  showToast(ok ? "Link copied." : "Clipboard unavailable.");
+});
+
+challengeFriendBtn.addEventListener("click", async () => {
+  const res = await shareRunScore(finalScoreEl.textContent, finalWaveEl.textContent, "native");
+  if (res.ok) {
+    showToast(res.method === "webshare" ? "Challenge sent." : "Challenge copied.");
+  } else {
+    showToast("Unable to challenge right now.");
+  }
+});
+
 function setMenuOpen(open) {
   sideMenuEl.classList.toggle("hidden", !open);
 }
@@ -1328,6 +1913,10 @@ menuLeaderboardBtn.addEventListener("click", () => {
 
 menuOnlineBtn.addEventListener("click", () => {
   setMenuOpen(false);
+  if (PORTAL_MODE) {
+    showToast("Online mode is disabled in portal build.");
+    return;
+  }
   onlineInit();
   setState(STATE.ONLINE);
 });
@@ -1359,6 +1948,10 @@ roomCodeEl.addEventListener("input", () => {
 
 // Top-right auth + account panel
 topSignInBtn.addEventListener("click", () => {
+  if (PORTAL_MODE) {
+    showToast("Sign-in is disabled in portal build.");
+    return;
+  }
   onlineInit();
   setState(STATE.ONLINE);
 });
@@ -1369,6 +1962,10 @@ topAccountBtn.addEventListener("click", () => {
 });
 closeAccountBtn.addEventListener("click", () => setState(STATE.MENU));
 accountToOnlineBtn.addEventListener("click", () => {
+  if (PORTAL_MODE) {
+    showToast("Online mode is disabled in portal build.");
+    return;
+  }
   onlineInit();
   setState(STATE.ONLINE);
 });
@@ -1384,6 +1981,51 @@ accountSyncBtn.addEventListener("click", () => {
       renderAccountPanel();
     })
     .catch(() => {});
+});
+
+dailyCloseBtn.addEventListener("click", () => {
+  dailyRewardEl.classList.add("hidden");
+});
+
+dailyClaimBtn.addEventListener("click", () => {
+  grantDailyReward(1);
+});
+
+dailyDoubleBtn.addEventListener("click", async () => {
+  const st = dailyRewardState();
+  if (!st.claimable) return;
+  const provider = getRewardedProvider();
+  if (!provider || !provider.isAvailable()) {
+    showToast("No ad available right now.");
+    return;
+  }
+  try {
+    const result = await provider.showRewardedAd({ placement: "daily_double" });
+    if (result && result.completed) {
+      grantDailyReward(2);
+    } else {
+      showToast("Ad not completed. You can still claim free reward.");
+    }
+  } catch {
+    showToast("Ad failed. Free claim is still available.");
+  } finally {
+    renderDailyRewardPopup();
+  }
+});
+
+tierT1Btn.addEventListener("click", () => {
+  forcedPreviewTier = 1;
+  if (state === STATE.HANGAR) renderHangar();
+});
+
+tierT2Btn.addEventListener("click", () => {
+  forcedPreviewTier = 2;
+  if (state === STATE.HANGAR) renderHangar();
+});
+
+tierT3Btn.addEventListener("click", () => {
+  forcedPreviewTier = 3;
+  if (state === STATE.HANGAR) renderHangar();
 });
 
 // -----------------------------
@@ -1416,13 +2058,145 @@ pilotPillEl.addEventListener("click", async () => {
   renderHangar();
 });
 
+function gameplayVisualTierForShip(shipId) {
+  return tierFromIndex(upgradeTier(ensureShipState(shipId).upgrades) + 1);
+}
+
+function previewVisualTierForShip(shipId) {
+  const baseTier = gameplayVisualTierForShip(shipId);
+  return tierFromIndex(forcedPreviewTier || baseTier);
+}
+
+function setTierPickerState(tier) {
+  const t = tierFromIndex(tier);
+  tierT1Btn.classList.toggle("tierPicker__active", t === 1);
+  tierT2Btn.classList.toggle("tierPicker__active", t === 2);
+  tierT3Btn.classList.toggle("tierPicker__active", t === 3);
+}
+
+async function renderShipPreview(shipId, tier, locked = false) {
+  const t = tierFromIndex(tier);
+  setTierPickerState(t);
+  if (!window.ship3D || typeof window.ship3D.ensureHangar !== "function") {
+    shipModelEl.innerHTML = shipSvg(shipId, t - 1);
+    return;
+  }
+  try {
+    const ok = await window.ship3D.ensureHangar(shipModelEl);
+    if (!ok) {
+      shipModelEl.innerHTML = shipSvg(shipId, t - 1);
+      return;
+    }
+    window.ship3D.setHangarShip(shipId, t, locked);
+  } catch {
+    shipModelEl.innerHTML = shipSvg(shipId, t - 1);
+  }
+}
+
+async function ensureGame3DShip() {
+  if (!window.ship3D || typeof window.ship3D.ensureGame !== "function") {
+    game3DReady = false;
+    return false;
+  }
+  try {
+    const ok = await window.ship3D.ensureGame(gameRootEl, WORLD.width, WORLD.height);
+    if (!ok) {
+      game3DReady = false;
+      return false;
+    }
+    const shipId = SAVE.profile.selectedShipId;
+    const tier = gameplayVisualTierForShip(shipId);
+    const key = `${shipId}:${tier}`;
+    if (key !== currentGameShipKey) {
+      window.ship3D.setGameShip(shipId, tier);
+      currentGameShipKey = key;
+    }
+    game3DReady = true;
+    return true;
+  } catch {
+    game3DReady = false;
+    return false;
+  }
+}
+
+function updateGame3DFrame() {
+  if (!game3DReady || !window.ship3D || typeof window.ship3D.updateGamePlayer !== "function") return;
+  const selectedState = ensureShipState(SAVE.profile.selectedShipId);
+  const tier = gameplayVisualTierForShip(SAVE.profile.selectedShipId);
+  const shieldRatio = player.shieldMax > 0 ? player.shield / player.shieldMax : 0;
+  window.ship3D.updateGamePlayer({
+    x: player.x,
+    y: player.y,
+    angle: player.angle,
+    tier,
+    thrusterLevel: selectedState.upgrades.thrusters || 0,
+    shieldLevel: (selectedState.upgrades.shieldMax || 0) + (selectedState.upgrades.hullMax || 0),
+    weaponLevel: (selectedState.upgrades.damage || 0) + (selectedState.upgrades.fireRate || 0),
+    shooting: Boolean(input.shooting),
+    shieldRatio,
+  });
+}
+
+function renderHangarRewardedActions() {
+  const providerReady = hasRewardedAdapter();
+  const status = adRewardStatus();
+  const lockReason =
+    !providerReady
+      ? "Rewarded ads unavailable."
+      : status.remaining <= 0
+      ? `Daily cap reached (${ADS.dailyCap}/${ADS.dailyCap}).`
+      : status.sessionRemaining <= 0
+      ? `Session cap reached (${ADS.sessionCap}/${ADS.sessionCap}).`
+      : status.waitMs > 0
+      ? `Cooldown: ${formatCooldown(status.waitMs)}`
+      : "";
+
+  const setBtn = (btn, label) => {
+    btn.textContent = label;
+    btn.disabled = Boolean(lockReason);
+    btn.title = lockReason;
+    btn.onclick = null;
+  };
+
+  setBtn(hangarAdCreditsBtn, "Watch Ad → +350 Credits");
+  setBtn(hangarAdCrystalsBtn, "Watch Ad → +2 Crystals");
+  if (lockReason) {
+    return;
+  }
+
+  console.info("rewarded_shown", { placement: "hangar" });
+  trackEvent("rewarded_shown", { placement: "hangar" });
+
+  hangarAdCreditsBtn.onclick = async () => {
+    await tryRewardedPlacement({
+      placement: "hangar_credits",
+      cfg: AD_REWARDS.hangar_credits,
+      buttonEl: hangarAdCreditsBtn,
+      textEl: null,
+    });
+    renderHangarRewardedActions();
+  };
+
+  hangarAdCrystalsBtn.onclick = async () => {
+    await tryRewardedPlacement({
+      placement: "hangar_crystals",
+      cfg: AD_REWARDS.hangar_crystals,
+      buttonEl: hangarAdCrystalsBtn,
+      textEl: null,
+    });
+    renderHangarRewardedActions();
+  };
+}
+
 function renderHangar() {
   cloudInit();
+  if (!unlockFxTimer) unlockFxEl.classList.add("hidden");
 
   const authed = isAuthed();
   const payReady = isHosted(); // same-origin backend supported when PAYMENTS_API_BASE is empty
   const selectedShip = shipById(SAVE.profile.selectedShipId);
   const selectedState = ensureShipState(selectedShip.id);
+  storeCardEl.classList.toggle("hidden", PORTAL_MODE);
 
   // Store gating: real money purchase requires hosting + backend + account.
   // Conversion is allowed only when signed in (or in local dev without Firebase).
@@ -1440,6 +2214,7 @@ function renderHangar() {
         renderHangar();
       });
     }
+    renderHangarRewardedActions();
     return;
   }
   hangarAuthWaitScheduled = false;
@@ -1471,11 +2246,22 @@ function renderHangar() {
     btn.className = "shipBtn";
     if (s.id === selectedShip.id) btn.classList.add("shipBtn--active");
     if (!st.owned) btn.classList.add("shipBtn--locked");
-    btn.textContent = s.name;
+    btn.textContent = st.owned
+      ? s.name
+      : `${s.name} · ${s.priceCrystals ? `${s.priceCrystals}C` : `${s.priceCredits} cr`}`;
     btn.title = st.owned ? `${s.name} (${s.rarity})` : `${s.name} (Locked - ${s.priceCrystals ? s.priceCrystals + " crystals" : s.priceCredits + " credits"})`;
     btn.addEventListener("click", () => {
       // Allow selecting owned ships freely.
       if (st.owned) {
+        SAVE.profile.selectedShipId = s.id;
+        SAVE.profile.updatedAt = nowMs();
+        saveNow();
+        renderHangar();
+        return;
+      }
+
+      // First tap on locked ship previews silhouette/stats. Second tap can purchase.
+      if (SAVE.profile.selectedShipId !== s.id) {
         SAVE.profile.selectedShipId = s.id;
         SAVE.profile.updatedAt = nowMs();
         saveNow();
@@ -1488,7 +2274,7 @@ function renderHangar() {
       const ok = confirm(`Buy ${s.name} for ${costText}?`);
       if (!ok) return;
 
-      if (!authed) {
+      if (progressionRequiresAuth() && !authed) {
         alert("Please sign in with Google first (Online -> Sign in). Purchases are account-based.");
         setState(STATE.ONLINE);
         return;
@@ -1513,17 +2299,24 @@ function renderHangar() {
       SAVE.profile.updatedAt = nowMs();
       saveNow();
       if (CLOUD.enabled && CLOUD.user) cloudPush().catch(() => {});
+      unlockFxEl.classList.remove("hidden");
+      unlockFxEl.textContent = `${s.name} Unlocked!`;
+      if (unlockFxTimer) clearTimeout(unlockFxTimer);
+      unlockFxTimer = setTimeout(() => {
+        unlockFxEl.classList.add("hidden");
+        unlockFxTimer = null;
+      }, 1800);
+      if (window.ship3D && typeof window.ship3D.playUnlockEffect === "function") {
+        window.ship3D.playUnlockEffect();
+      }
       renderHangar();
       updateTopBar();
     });
     shipPickerEl.appendChild(btn);
   });
 
-  // Ship model preview (2D SVG)
-  const tier = upgradeTier(selectedState.upgrades);
-  if (shipModelEl) {
-    shipModelEl.innerHTML = shipSvg(selectedShip.id, tier);
-  }
+  const tier = previewVisualTierForShip(selectedShip.id);
+  void renderShipPreview(selectedShip.id, tier, !selectedState.owned);
 
   // Stats preview for current ship
   const base = computePermanentStats(selectedShip.id);
@@ -1561,12 +2354,14 @@ function renderHangar() {
 
   if (!selectedState.owned) {
     upgradeListEl.innerHTML = `<div class="fine">This ship is locked. Buy it to upgrade.</div>`;
+    renderHangarRewardedActions();
     return;
   }
 
-  if (!authed) {
+  if (progressionRequiresAuth() && !authed) {
     upgradeListEl.innerHTML =
       `<div class="fine">Sign in with Google to upgrade ships and keep purchases synced across devices.</div>`;
+    renderHangarRewardedActions();
     return;
   }
 
@@ -1611,6 +2406,8 @@ function renderHangar() {
     row.appendChild(btn);
     upgradeListEl.appendChild(row);
   });
+
+  renderHangarRewardedActions();
 }
 
 function renderLeaderboard(which) {
@@ -1754,6 +2551,14 @@ function cloudInit() {
 
   const hasSdk = typeof window.firebase !== "undefined";
   const hasConfig = hasFirebaseConfig();
+  if (PORTAL_MODE) {
+    CLOUD.enabled = false;
+    CLOUD.usernameReady = false;
+    CLOUD.status = "Offline (portal mode)";
+    markAuthResolved();
+    updateAuthUi();
+    return;
+  }
   if (!hasSdk || !hasConfig) {
     CLOUD.enabled = false;
     CLOUD.usernameReady = false;
@@ -3024,6 +3829,7 @@ const run = {
   combo: 1,
   comboTimer: 0,
   shake: 0,
+  kills: 0,
   runUpgrades: {},
   duel: {
     kind: "ai", // "ai" | "online"
@@ -3076,13 +3882,15 @@ const player = {
 const PLAYER_BOUND_PAD = 6;
 
 const AD_REWARDS = {
-  survival: { seconds: 20, credits: 90, crystals: 0, xp: 80 },
-  campaign: { seconds: 40, credits: 220, crystals: 1, xp: 220 },
-  duel: { seconds: 60, credits: 420, crystals: 2, xp: 360 },
+  survival: { seconds: 20, credits: 260, crystals: 0, xp: 90 },
+  campaign: { seconds: 35, credits: 380, crystals: 1, xp: 140 },
+  duel: { seconds: 45, credits: 520, crystals: 1, xp: 180 },
+  hangar_credits: { seconds: 20, credits: 350, crystals: 0, xp: 0 },
+  hangar_crystals: { seconds: 20, credits: 0, crystals: 2, xp: 0 },
 };
 
 function adRewardDayKey() {
-  return new Date().toISOString().slice(0, 10);
+  return localDayKey();
 }
 
 function ensureAdRewardDay() {
@@ -3093,13 +3901,39 @@ function ensureAdRewardDay() {
   }
 }
 
+function getRewardedProvider() {
+  if (window.rewardedAdProvider && typeof window.rewardedAdProvider.isAvailable === "function") {
+    return window.rewardedAdProvider;
+  }
+  return {
+    isAvailable: () => Boolean(ADS.mockEnabled),
+    showRewardedAd: async () => {
+      if (!ADS.mockEnabled) return { completed: false, reason: "unavailable" };
+      await runMockRewardedAd();
+      return { completed: true, reason: "mock_completed" };
+    },
+  };
+}
+
+function adIntegrityBlocked() {
+  const now = nowMs();
+  const lastIntegrity = Number(SAVE.profile.adIntegrityLastAt || 0);
+  if (lastIntegrity && now + 30000 < lastIntegrity) {
+    return true;
+  }
+  SAVE.profile.adIntegrityLastAt = now;
+  return false;
+}
+
 function adRewardStatus() {
   ensureAdRewardDay();
   const claimed = Math.max(0, Math.floor(Number(SAVE.profile.adRewardsClaimed || 0)));
+  const sessionClaimed = Math.max(0, Math.floor(Number(SESSION.rewardedAdsClaimed || 0)));
   const remaining = Math.max(0, ADS.dailyCap - claimed);
+  const sessionRemaining = Math.max(0, ADS.sessionCap - sessionClaimed);
   const cooldownUntil = Number(SAVE.profile.adRewardLastAt || 0) + ADS.cooldownMs;
   const waitMs = Math.max(0, cooldownUntil - Date.now());
-  return { claimed, remaining, waitMs };
+  return { claimed, remaining, waitMs, sessionClaimed, sessionRemaining };
 }
 
 function formatCooldown(waitMs) {
@@ -3112,16 +3946,18 @@ function formatCooldown(waitMs) {
 
 function consumeAdRewardSlot() {
   const status = adRewardStatus();
-  if (status.remaining <= 0 || status.waitMs > 0) return false;
+  if (status.remaining <= 0 || status.waitMs > 0 || status.sessionRemaining <= 0) return false;
   SAVE.profile.adRewardsClaimed = status.claimed + 1;
   SAVE.profile.adRewardLastAt = nowMs();
+  SESSION.rewardedAdsClaimed = status.sessionClaimed + 1;
   SAVE.profile.updatedAt = nowMs();
   saveNow();
   return true;
 }
 
 function hasRewardedAdapter() {
-  return Boolean(window.stellarAds && typeof window.stellarAds.showRewardedAd === "function");
+  const provider = getRewardedProvider();
+  return Boolean(provider && provider.isAvailable && provider.isAvailable());
 }
 
 function delay(ms) {
@@ -3138,17 +3974,24 @@ async function runMockRewardedAd(onTick) {
 }
 
 async function requestRewardedAdCompletion(modeKey, onTick) {
-  if (hasRewardedAdapter()) {
-    const result = await window.stellarAds.showRewardedAd({ placement: modeKey });
-    if (result === true) return true;
-    return Boolean(result && result.completed);
+  const provider = getRewardedProvider();
+  if (provider && provider.isAvailable()) {
+    console.info("rewarded_requested", { placement: modeKey });
+    trackEvent("rewarded_requested", { placement: modeKey });
+    const result = await provider.showRewardedAd({ placement: modeKey, onTick });
+    const completed = Boolean(result && result.completed);
+    if (completed) {
+      console.info("rewarded_completed", { placement: modeKey });
+      trackEvent("rewarded_completed", { placement: modeKey });
+    } else {
+      console.info("rewarded_failed", { placement: modeKey, reason: (result && result.reason) || "not_completed" });
+      trackEvent("rewarded_failed", { placement: modeKey, reason: (result && result.reason) || "not_completed" });
+    }
+    return completed;
   }
 
-  if (ADS.mockEnabled) {
-    await runMockRewardedAd(onTick);
-    return true;
-  }
-
+  console.info("rewarded_failed", { placement: modeKey, reason: "provider_unavailable" });
+  trackEvent("rewarded_failed", { placement: modeKey, reason: "provider_unavailable" });
   return false;
 }
 
@@ -3272,6 +4115,7 @@ function resetRun(mode) {
   run.combo = 1;
   run.comboTimer = 0;
   run.shake = 0;
+  run.kills = 0;
   run.runUpgrades = {};
   run.duel = {
     kind: "ai",
@@ -3346,6 +4190,10 @@ function spawnEnemy(typeKey) {
   }
 
   const wave = run.wave;
+  const eliteChance = typeKey === "boss" || typeKey === "pvp" || typeKey === "duelist" ? 0 : Math.min(0.22, Math.max(0, (wave - 7) * 0.01));
+  const elite = Math.random() < eliteChance;
+  const hpMult = elite ? 1.6 : 1;
+  const speedMult = elite ? 1.12 : 1;
   const maxHp = type.hp(wave);
   entities.enemies.push({
     id: Math.random().toString(16).slice(2),
@@ -3354,13 +4202,15 @@ function spawnEnemy(typeKey) {
     y,
     vx: 0,
     vy: 0,
-    hp: maxHp,
-    maxHp,
-    speed: type.speed(wave),
-    size: type.size,
-    color: type.color,
+    hp: maxHp * hpMult,
+    maxHp: maxHp * hpMult,
+    speed: type.speed(wave) * speedMult,
+    size: type.size + (elite ? 3 : 0),
+    color: elite ? "#ffdb6e" : type.color,
+    elite,
     fire: rand(0, 0.7),
     orbit: rand(-1, 1),
+    phase: rand(0, TAU),
   });
 }
 
@@ -3451,6 +4301,7 @@ function takeDamage(amount) {
 function killEnemy(enemy) {
   const type = ENEMY_TYPES[enemy.type];
   run.score += type.score;
+  if (enemy.type !== "pvp") run.kills += 1;
 
   if (run.mode === MODE.SURVIVAL) {
     run.waveRemaining -= 1;
@@ -3482,9 +4333,9 @@ function killEnemy(enemy) {
   if (run.mode === MODE.SURVIVAL) {
     if (run.waveRemaining <= 0 && !run.bossAlive) {
       run.wave += 1;
-      run.waveRemaining = 10 + Math.floor(run.wave * 2.2);
+      run.waveRemaining = 12 + Math.floor(run.wave * 2.7);
       run.score += 50;
-      if (run.wave % 5 === 0) {
+      if (run.wave % 4 === 0) {
         run.bossAlive = true;
         spawnEnemy("boss");
       }
@@ -3494,6 +4345,13 @@ function killEnemy(enemy) {
   entities.enemies = entities.enemies.filter((e) => e.id !== enemy.id);
 }
 
+function sessionCreditMultiplier() {
+  const mins = (Date.now() - SESSION.startedAt) / 60000;
+  if (mins <= 30) return 1;
+  const over = mins - 30;
+  return clamp(1 - over * 0.0025, 0.78, 1);
+}
+
 function endRun(reason) {
   if (reason === "dead" && run.mode === MODE.DUEL) reason = "duel_loss";
   run.active = false;
@@ -3501,29 +4359,31 @@ function endRun(reason) {
   onlineDuelReportEnd(reason);
 
   const keepRewards = !progressionRequiresAuth() || isAuthed();
+  const runSeconds = Math.max(1, Math.floor(run.time));
+  const farmMult = sessionCreditMultiplier();
 
-  // Economy: credits are grindable, crystals are rare (mostly purchases + a small earnable trickle).
-  const baseCredits = Math.floor(run.score * 0.08) + run.wave * 10;
-  const baseXp = Math.floor(run.score * 0.13) + run.wave * 11;
+  // Medium-hard economy pacing with subtle anti-farming multiplier.
+  const baseCredits = Math.floor(run.score * 0.08) + run.wave * 9;
+  const baseXp = Math.floor(run.score * 0.1) + run.wave * 8;
   let crystals = 0;
   if (run.mode === MODE.SURVIVAL) {
-    if (Math.random() < 0.02) crystals = 1;
-    if (run.wave >= 15 && Math.random() < 0.03) crystals += 1;
+    if (run.wave >= 10 && Math.random() < 0.02) crystals += 1;
+    if (run.wave >= 20 && Math.random() < 0.02) crystals += 1;
   }
-  if (reason === "duel_win") crystals += 2;
+  if (reason === "duel_win") crystals += 1;
 
-  let credits = baseCredits;
-  let xp = baseXp;
+  let credits = Math.floor(baseCredits * farmMult);
+  let xp = Math.floor(baseXp * (0.95 + farmMult * 0.05));
   let unlockNextMission = false;
   if (run.mode === MODE.CAMPAIGN && run.campaign.completed) {
-    credits += 260 + run.campaign.missionId * 70;
-    xp += 120 + run.campaign.missionId * 26;
-    crystals += 1; // campaign completion always gives a small crystal reward
+    credits += 320 + run.campaign.missionId * 95;
+    xp += 140 + run.campaign.missionId * 36;
+    crystals += 1;
     unlockNextMission = true;
   }
   if (reason === "duel_win") {
-    credits += 220;
-    xp += 120;
+    credits += 260;
+    xp += 140;
   }
 
   const entry = {
@@ -3531,8 +4391,21 @@ function endRun(reason) {
     score: Math.floor(run.score),
     wave: run.wave,
     mode: run.mode,
-    date: new Date().toISOString().slice(0, 10),
+    date: localDayKey(),
   };
+
+  const prevBestScore = Number(SAVE.profile.bestScore || 0);
+  const prevBestWave = Number(SAVE.profile.bestWave || 1);
+  const brokeBestScore = entry.score > prevBestScore;
+  const brokeBestWave = entry.wave > prevBestWave;
+  const newRecord = brokeBestScore || brokeBestWave;
+
+  // Best-run retention loop always persists locally.
+  if (brokeBestScore) SAVE.profile.bestScore = entry.score;
+  if (brokeBestWave) SAVE.profile.bestWave = entry.wave;
+
+  applyMissionProgress({ kills: run.kills || 0, seconds: runSeconds, wave: entry.wave });
+  claimReadyMissions();
 
   if (keepRewards) {
     if (unlockNextMission) {
@@ -3540,10 +4413,11 @@ function endRun(reason) {
     }
     SAVE.profile.credits += credits;
     SAVE.profile.crystals += crystals;
-    // Shadow must never be below the actual balance after spending/earning.
     SAVE.profile.crystalsShadow = Math.max(SAVE.profile.crystalsShadow || 0, SAVE.profile.crystals);
     SAVE.profile.xp += xp;
     SAVE.profile.gamesPlayed = Number(SAVE.profile.gamesPlayed || 0) + 1;
+    SAVE.profile.totalKills = Number(SAVE.profile.totalKills || 0) + Number(run.kills || 0);
+    SAVE.profile.totalRunSeconds = Number(SAVE.profile.totalRunSeconds || 0) + runSeconds;
     if (run.mode === MODE.SURVIVAL) SAVE.profile.gamesSurvival = Number(SAVE.profile.gamesSurvival || 0) + 1;
     if (run.mode === MODE.CAMPAIGN) SAVE.profile.gamesCampaign = Number(SAVE.profile.gamesCampaign || 0) + 1;
     if (run.mode === MODE.DUEL && run.duel && run.duel.kind === "online") {
@@ -3552,18 +4426,13 @@ function endRun(reason) {
       if (reason === "duel_loss") SAVE.profile.onlineLosses = Number(SAVE.profile.onlineLosses || 0) + 1;
     }
 
-    if (run.score > SAVE.profile.bestScore) SAVE.profile.bestScore = Math.floor(run.score);
-    if (run.wave > SAVE.profile.bestWave) SAVE.profile.bestWave = run.wave;
-
     SAVE.leaderboard.unshift(entry);
     SAVE.leaderboard = SAVE.leaderboard.sort((a, b) => b.score - a.score).slice(0, 15);
-
-    // Mark local profile updated (used for cloud conflict resolution)
+    SESSION.creditsEarned += credits;
     SAVE.profile.updatedAt = nowMs();
     saveNow();
     updateTopBar();
 
-    // Optional: cloud sync
     if (CLOUD.enabled && CLOUD.user) {
       cloudPush().catch((err) => console.warn("[CLOUD] save failed", err));
       cloudUpdatePlayerRanking(entry, reason).catch((err) => console.warn("[CLOUD] ranking update failed", err));
@@ -3576,24 +4445,21 @@ function endRun(reason) {
     ? `${credits} credits, ${crystals} crystals, ${xp} xp`
     : `${credits} credits, ${crystals} crystals, ${xp} xp (not saved - sign in to keep rewards)`;
 
-  // Gameover header + win messaging.
+  newRecordBadgeEl.classList.toggle("hidden", !newRecord);
+
   gameoverSubEl.textContent = "";
   if (reason === "campaign_complete") {
     const nextId = (run.campaign && run.campaign.missionId ? run.campaign.missionId : 1) + 1;
     gameoverTitleEl.textContent = "You Win!";
-    if (keepRewards) {
-      gameoverSubEl.textContent = `Mission complete. Next mission unlocked: M${nextId}`;
-    } else {
-      gameoverSubEl.textContent = "Mission complete. Sign in to unlock the next mission and keep rewards.";
-    }
+    gameoverSubEl.textContent = keepRewards
+      ? `Mission complete. Next mission unlocked: M${nextId}`
+      : "Mission complete. Sign in to unlock the next mission and keep rewards.";
   } else if (reason === "duel_win") {
     gameoverTitleEl.textContent = "Victory!";
     gameoverSubEl.textContent = "Opponent hull reached 0.";
   } else if (reason === "duel_loss") {
     gameoverTitleEl.textContent = "You Lost";
     gameoverSubEl.textContent = "Opponent destroyed your ship first.";
-  } else if (reason === "dead") {
-    gameoverTitleEl.textContent = "Signal Lost";
   } else {
     gameoverTitleEl.textContent = "Signal Lost";
   }
@@ -3604,10 +4470,92 @@ function endRun(reason) {
     score: Number(entry.score || 0),
     wave: Number(entry.wave || 0),
     rewards_saved: keepRewards ? 1 : 0,
+    farm_multiplier: Number(farmMult.toFixed(3)),
   });
 
+  saveNow();
   setState(STATE.OVER);
   renderAdReward(reason);
+}
+
+async function tryRewardedPlacement({ placement, cfg, buttonEl, textEl, markClaimed = false }) {
+  const status = adRewardStatus();
+  if (status.remaining <= 0) {
+    console.info("rewarded_dailycap_blocked", { placement, cap: ADS.dailyCap });
+    trackEvent("rewarded_dailycap_blocked", { placement, cap: ADS.dailyCap });
+    if (textEl) textEl.textContent = `Daily reward limit reached (${ADS.dailyCap}/${ADS.dailyCap}).`;
+    if (buttonEl) {
+      buttonEl.disabled = true;
+      buttonEl.textContent = "Daily Cap";
+    }
+    return false;
+  }
+  if (status.sessionRemaining <= 0) {
+    if (textEl) textEl.textContent = `Session cap reached (${ADS.sessionCap}/${ADS.sessionCap}).`;
+    if (buttonEl) {
+      buttonEl.disabled = true;
+      buttonEl.textContent = "Session Cap";
+    }
+    return false;
+  }
+  if (status.waitMs > 0) {
+    console.info("rewarded_cooldown_blocked", { placement, wait_ms: status.waitMs });
+    trackEvent("rewarded_cooldown_blocked", { placement, wait_ms: status.waitMs });
+    if (textEl) textEl.textContent = `Next reward available in ${formatCooldown(status.waitMs)}.`;
+    if (buttonEl) {
+      buttonEl.disabled = true;
+      buttonEl.textContent = "Cooldown";
+    }
+    return false;
+  }
+  if (adIntegrityBlocked()) {
+    if (textEl) textEl.textContent = "Rewarded ads are temporarily blocked due to clock mismatch.";
+    if (buttonEl) {
+      buttonEl.disabled = true;
+      buttonEl.textContent = "Blocked";
+    }
+    return false;
+  }
+
+  if (buttonEl) {
+    buttonEl.disabled = true;
+    buttonEl.textContent = "Starting Ad...";
+  }
+
+  const completed = await requestRewardedAdCompletion(placement, (remaining) => {
+    if (buttonEl) buttonEl.textContent = `Ad: ${remaining}s`;
+  });
+  if (!completed) {
+    if (buttonEl) {
+      buttonEl.disabled = false;
+      buttonEl.textContent = "Watch Ad";
+    }
+    if (textEl) textEl.textContent = "No ad available, try later.";
+    showToast("No ad available, try later.");
+    return false;
+  }
+
+  if (!consumeAdRewardSlot()) {
+    if (textEl) textEl.textContent = "Reward slot unavailable. Try again later.";
+    if (buttonEl) {
+      buttonEl.disabled = true;
+      buttonEl.textContent = "Unavailable";
+    }
+    return false;
+  }
+
+  const granted = grantAdReward(cfg);
+  if (!granted) return false;
+  if (markClaimed) run.adRewardClaimed = true;
+  if (buttonEl) {
+    buttonEl.disabled = true;
+    buttonEl.textContent = "Reward Granted";
+  }
+  if (textEl) {
+    const next = adRewardStatus();
+    textEl.textContent = `Reward granted. ${next.remaining}/${ADS.dailyCap} remaining today.`;
+  }
+  return true;
 }
 
 function renderAdReward(reason) {
@@ -3621,29 +4569,29 @@ function renderAdReward(reason) {
   adRewardBtn.onclick = null;
   adRewardBtn.disabled = true;
   adRewardBtn.textContent = "Watch Ad";
-  adRewardTextEl.textContent = `Watch an ad for +${cfg.credits} credits, +${cfg.crystals} crystals, +${cfg.xp} xp.`;
+  adRewardTextEl.textContent = `Watch an optional ad for +${cfg.credits} credits, +${cfg.crystals} crystals, +${cfg.xp} xp.`;
 
   if (run.adRewardClaimed) {
     adRewardBtn.disabled = true;
     adRewardBtn.textContent = "Claimed";
     return;
   }
-
   if (!keepRewards) {
     adRewardTextEl.textContent = "Sign in with Google to claim ad rewards.";
     return;
   }
-
-  if (!hasRewardedAdapter() && !ADS.mockEnabled) {
+  if (!hasRewardedAdapter()) {
     adRewardTextEl.textContent = "Rewarded ads are currently unavailable.";
     return;
   }
-
   if (status.remaining <= 0) {
     adRewardTextEl.textContent = `Daily reward limit reached (${ADS.dailyCap}/${ADS.dailyCap}). Try again tomorrow.`;
     return;
   }
-
+  if (status.sessionRemaining <= 0) {
+    adRewardTextEl.textContent = `Session cap reached (${ADS.sessionCap}/${ADS.sessionCap}).`;
+    return;
+  }
   if (status.waitMs > 0) {
     adRewardTextEl.textContent = `Next reward available in ${formatCooldown(status.waitMs)}.`;
     adRewardBtn.textContent = "Cooldown";
@@ -3652,93 +4600,21 @@ function renderAdReward(reason) {
 
   adRewardBtn.disabled = false;
   adRewardBtn.textContent = "Watch Ad";
-  adRewardTextEl.textContent = `Watch an ad for +${cfg.credits} credits, +${cfg.crystals} crystals, +${cfg.xp} xp. ${status.remaining}/${ADS.dailyCap} available today.`;
-
-  trackEvent("rewarded_ad_offer_shown", {
-    mode: modeKey,
-    reason,
-    remaining: status.remaining,
-    cap: ADS.dailyCap,
-  });
+  adRewardTextEl.textContent =
+    `Watch an optional ad for +${cfg.credits} credits, +${cfg.crystals} crystals, +${cfg.xp} xp.` +
+    ` ${status.remaining}/${ADS.dailyCap} daily, ${status.sessionRemaining}/${ADS.sessionCap} session left.`;
+  console.info("rewarded_shown", { placement: modeKey, reason });
+  trackEvent("rewarded_shown", { placement: modeKey, reason });
 
   adRewardBtn.onclick = async () => {
-    if (run.adRewardClaimed) return;
-    const current = adRewardStatus();
-    if (current.remaining <= 0) {
-      adRewardTextEl.textContent = `Daily reward limit reached (${ADS.dailyCap}/${ADS.dailyCap}).`;
-      adRewardBtn.disabled = true;
-      adRewardBtn.textContent = "Limit Reached";
-      return;
-    }
-    if (current.waitMs > 0) {
-      adRewardTextEl.textContent = `Next reward available in ${formatCooldown(current.waitMs)}.`;
-      adRewardBtn.disabled = true;
-      adRewardBtn.textContent = "Cooldown";
-      return;
-    }
-
-    adRewardBtn.disabled = true;
-    adRewardBtn.textContent = "Starting Ad...";
-
-    trackEvent("rewarded_ad_attempt", {
-      mode: modeKey,
-      provider: hasRewardedAdapter() ? ADS.provider || "custom" : "mock",
-      remaining: current.remaining,
+    const ok = await tryRewardedPlacement({
+      placement: modeKey,
+      cfg,
+      buttonEl: adRewardBtn,
+      textEl: adRewardTextEl,
+      markClaimed: true,
     });
-
-    try {
-      const completed = await requestRewardedAdCompletion(modeKey, (remaining) => {
-        adRewardBtn.textContent = `Ad: ${remaining}s`;
-      });
-
-      if (!completed) {
-        adRewardBtn.disabled = false;
-        adRewardBtn.textContent = "Watch Ad";
-        adRewardTextEl.textContent = "Ad was closed or not available. Try again.";
-        trackEvent("rewarded_ad_incomplete", { mode: modeKey });
-        return;
-      }
-
-      if (!consumeAdRewardSlot()) {
-        const next = adRewardStatus();
-        adRewardBtn.disabled = true;
-        adRewardBtn.textContent = next.remaining <= 0 ? "Limit Reached" : "Cooldown";
-        adRewardTextEl.textContent =
-          next.remaining <= 0
-            ? `Daily reward limit reached (${ADS.dailyCap}/${ADS.dailyCap}).`
-            : `Next reward available in ${formatCooldown(next.waitMs)}.`;
-        trackEvent("rewarded_ad_slot_rejected", {
-          mode: modeKey,
-          remaining: next.remaining,
-          wait_ms: next.waitMs,
-        });
-        return;
-      }
-
-      const granted = grantAdReward(cfg);
-      if (!granted) {
-        adRewardBtn.disabled = true;
-        adRewardBtn.textContent = "Sign In Required";
-        return;
-      }
-
-      run.adRewardClaimed = true;
-      const next = adRewardStatus();
-      adRewardBtn.textContent = "Reward Granted";
-      adRewardTextEl.textContent = `Reward granted. ${next.remaining}/${ADS.dailyCap} ad rewards left today.`;
-      trackEvent("rewarded_ad_complete", {
-        mode: modeKey,
-        credits: cfg.credits,
-        crystals: cfg.crystals,
-        xp: cfg.xp,
-        remaining_after: next.remaining,
-      });
-    } catch (err) {
-      adRewardBtn.disabled = false;
-      adRewardBtn.textContent = "Watch Ad";
-      adRewardTextEl.textContent = "Ad failed to load. Please try again.";
-      trackEvent("rewarded_ad_error", { mode: modeKey, message: String((err && err.message) || "unknown") });
-    }
+    if (!ok) return;
   };
 }
 
@@ -3756,6 +4632,7 @@ function grantAdReward(cfg) {
   SAVE.profile.updatedAt = nowMs();
   saveNow();
   updateTopBar();
+  renderMissionBoard();
   if (CLOUD.enabled && CLOUD.user) cloudPush().catch(() => {});
   return true;
 }
@@ -3770,31 +4647,19 @@ function restartActiveRun() {
 
 function maybeStartPendingAfterRotate() {
   if (!pendingStart) return;
-  if (needsLandscape()) {
-    rotateReadyAt = 0;
-    return;
-  }
-  if (!rotateReadyAt) rotateReadyAt = Date.now() + 3000;
-  if (Date.now() >= rotateReadyAt) {
-    const { mode, options } = pendingStart;
-    pendingStart = null;
-    rotateReadyAt = 0;
-    rotateOverlayEl.classList.add("hidden");
-    setPaused(false);
-    startRun(mode, options);
-  }
+  const { mode, options } = pendingStart;
+  pendingStart = null;
+  startRun(mode, options);
 }
 
 function guardStartRun(mode, options) {
-  if (needsLandscape()) {
-    pendingStart = { mode, options };
-    updateRotateOverlay();
-    return false;
-  }
+  void mode;
+  void options;
   return true;
 }
 
 function startRun(mode, options = {}) {
+  if (!BOOT.started) return;
   if (!guardStartRun(mode, options)) return;
   showFullscreenHint();
   activeMode = mode;
@@ -3851,6 +4716,7 @@ function startRun(mode, options = {}) {
   updateHud();
   setState(STATE.RUN);
   updateTouchControlsVisibility();
+  void ensureGame3DShip();
 }
 
 // Update
@@ -3878,7 +4744,7 @@ function updateHud() {
       objectiveEl.textContent = `Win: reduce duelist HP to 0 (${hp})`;
     }
   } else {
-    const nextBoss = run.bossAlive ? "Boss fight!" : `Next boss: W${Math.ceil(run.wave / 5) * 5}`;
+    const nextBoss = run.bossAlive ? "Boss fight!" : `Next boss: W${Math.ceil(run.wave / 4) * 4}`;
     objectiveEl.textContent = `Survive В· ${nextBoss}`;
   }
 
@@ -3994,7 +4860,7 @@ function updateEnemies(dt) {
     const mission = getCampaignMission(run.campaign.missionId);
 
     // Spawn regular enemies
-    const ramp = Math.floor(run.time / 35);
+    const ramp = Math.floor(run.time / 28);
     const desired = (mission.spawns.desired || 5) + ramp;
     const nonBossCount = entities.enemies.filter((e) => e.type !== "boss").length;
     if (!run.bossAlive && nonBossCount < desired) {
@@ -4015,13 +4881,13 @@ function updateEnemies(dt) {
     }
   } else {
     // Survival spawner
-    const desired = 3 + Math.floor(run.wave * 0.6);
+    const desired = 4 + Math.floor(run.wave * 0.8);
     if (!run.bossAlive && entities.enemies.length < desired) {
       const roll = Math.random();
       let type = "drone";
-      if (run.wave >= 4 && roll > 0.7) type = "fighter";
-      if (run.wave >= 7 && roll > 0.85) type = "sniper";
-      if (run.wave >= 10 && roll > 0.9) type = "rammer";
+      if (run.wave >= 3 && roll > 0.63) type = "fighter";
+      if (run.wave >= 6 && roll > 0.8) type = "sniper";
+      if (run.wave >= 9 && roll > 0.88) type = "rammer";
       spawnEnemy(type);
     }
   }
@@ -4042,11 +4908,22 @@ function updateEnemies(dt) {
     if (type.shoot && e.type !== "boss" && e.type !== "duelist") {
       const desiredDist = 200;
       const push = (dist - desiredDist) * 0.006;
-      tx = (dx / dist) * push + (-dy / dist) * e.orbit * 0.6;
-      ty = (dy / dist) * push + (dx / dist) * e.orbit * 0.6;
+      const strafe = e.elite ? 0.95 : 0.6;
+      tx = (dx / dist) * push + (-dy / dist) * e.orbit * strafe;
+      ty = (dy / dist) * push + (dx / dist) * e.orbit * strafe;
+      if (e.elite) {
+        tx += Math.sin(run.time * 2 + e.phase) * 0.16;
+        ty += Math.cos(run.time * 1.7 + e.phase) * 0.16;
+      }
       const len = Math.hypot(tx, ty) || 1;
       tx /= len;
       ty /= len;
+    }
+
+    if (e.type === "rammer" && dist < 280) {
+      tx = dx / dist;
+      ty = dy / dist;
+      e.speed += 28 * dt;
     }
 
     e.vx += (tx * e.speed - e.vx) * 4.5 * dt;
@@ -4116,7 +4993,8 @@ function updateEnemies(dt) {
       if (e.type === "pvp") base = 16;
 
       const scaler = run.mode === MODE.DUEL ? 1 : 1 + Math.min(1.2, run.wave * 0.04);
-      const dmg = Math.round(base * scaler);
+      const eliteHitMult = e.elite ? 1.25 : 1;
+      const dmg = Math.round(base * scaler * eliteHitMult);
 
       // Knock the player away a bit so we don't "stick" inside hitboxes.
       const kx = dx / dist;
@@ -4403,6 +5281,14 @@ function drawEnemies() {
     const angle = Math.atan2(player.y - e.y, player.x - e.x);
     drawShip(e.x, e.y, angle, e.color, "rgba(255,255,255,0.5)", e.type === "boss" ? 1.5 : 1);
 
+    if (e.elite) {
+      ctx.strokeStyle = "rgba(255, 219, 110, 0.9)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(e.x, e.y, e.size + 6, 0, TAU);
+      ctx.stroke();
+    }
+
     ctx.fillStyle = "rgba(0,0,0,0.35)";
     ctx.fillRect(e.x - 26, e.y + e.size + 8, 52, 6);
     ctx.fillStyle = "rgba(255,255,255,0.7)";
@@ -4482,15 +5368,23 @@ function drawCampaignObjects() {
 }
 
 function drawBullets() {
+  const selectedState = ensureShipState(SAVE.profile.selectedShipId);
+  const weaponPower = Number(selectedState.upgrades.damage || 0) + Number(selectedState.upgrades.fireRate || 0);
+  const weaponTier = weaponPower >= 12 ? 3 : weaponPower >= 6 ? 2 : 1;
   ctx.globalCompositeOperation = "lighter";
   entities.bullets.forEach((b) => {
     const alpha = clamp(b.life / 1.4, 0, 1);
     ctx.fillStyle =
       b.team === "player"
-        ? `rgba(64, 243, 255, ${0.65 * alpha})`
+        ? weaponTier === 3
+          ? `rgba(255, 122, 217, ${0.75 * alpha})`
+          : weaponTier === 2
+          ? `rgba(115, 255, 244, ${0.7 * alpha})`
+          : `rgba(64, 243, 255, ${0.65 * alpha})`
         : `rgba(255, 93, 125, ${0.7 * alpha})`;
     ctx.beginPath();
-    ctx.arc(b.x, b.y, b.r + 2, 0, TAU);
+    const outer = b.team === "player" ? b.r + 2 + (weaponTier - 1) * 0.6 : b.r + 2;
+    ctx.arc(b.x, b.y, outer, 0, TAU);
     ctx.fill();
     ctx.fillStyle = b.team === "player" ? `rgba(255,255,255, ${0.55 * alpha})` : `rgba(255,255,255, ${0.3 * alpha})`;
     ctx.beginPath();
@@ -4516,6 +5410,7 @@ function drawDrones() {
 }
 
 function drawPlayerShip() {
+  if (run.active && game3DReady) return;
   drawFancyPlayerShip();
 }
 
@@ -4565,6 +5460,7 @@ function render(dt) {
   drawParticles();
   drawDrones();
   drawPlayerShip();
+  updateGame3DFrame();
   drawOnlineDuelLabels();
 
   ctx.restore();
@@ -4590,6 +5486,8 @@ function gameLoop(ts) {
 initAnalytics();
 cloudInit();
 updateTopBar();
+ensureMissionSet();
+renderMissionBoard();
 setState(STATE.MENU);
 updateHud();
 updateRotateOverlay();
@@ -4729,6 +5627,105 @@ try {
 } catch {
   // ignore
 }
+
+async function applyInitialRouteIntent() {
+  const path = normalizePath(window.location.pathname);
+  const levelFromRoute = routeCampaignLevel(path);
+
+  if (path === "/game/survival/start") {
+    startRun(MODE.SURVIVAL);
+    return;
+  }
+
+  if (path === "/game/campaign") {
+    renderCampaignMissions();
+    setState(STATE.CAMPAIGN);
+    return;
+  }
+
+  if (path === "/game/campaign/start" || levelFromRoute) {
+    const missionId = levelFromRoute || Math.max(1, Number(SAVE.profile.campaignUnlocked || 1));
+    startRun(MODE.CAMPAIGN, { missionId });
+    return;
+  }
+
+  if (path === "/game/onlinematch" || path === "/game/onlinematch/start") {
+    if (PORTAL_MODE) {
+      setState(STATE.MENU);
+      return;
+    }
+    onlineInit();
+    setState(STATE.ONLINE);
+    return;
+  }
+
+  if (path === "/game/hangar") {
+    await waitForAuthRestore();
+    renderHangar();
+    setState(STATE.HANGAR);
+    return;
+  }
+
+  if (path === "/game/leaderboard") {
+    renderLeaderboard("local");
+    setState(STATE.LEADERBOARD);
+    return;
+  }
+
+  if (path === "/game/account") {
+    renderAccountPanel();
+    setState(STATE.ACCOUNT);
+  }
+}
+
+async function runInitialRoute() {
+  await applyInitialRouteIntent();
+  routeBooting = false;
+  syncRouteWithState(state);
+}
+
+function updateBootProgress(value, label) {
+  BOOT.progress = clamp(value, 0, 100);
+  bootLoaderFillEl.style.width = `${BOOT.progress}%`;
+  if (label) bootLoaderTextEl.textContent = label;
+}
+
+async function prepareBoot() {
+  updateBootProgress(18, "Loading interface...");
+  await delay(120);
+  updateBootProgress(42, "Calibrating controls...");
+  await delay(120);
+  updateBootProgress(68, "Linking mission data...");
+  await delay(130);
+  updateBootProgress(86, "Systems online...");
+  await delay(120);
+  updateBootProgress(100, "Ready.");
+  bootStartBtn.disabled = false;
+  BOOT.complete = true;
+}
+
+async function beginPlayFromBoot() {
+  if (BOOT.started) return;
+  BOOT.started = true;
+  bootStartBtn.disabled = true;
+  bootLoaderTextEl.textContent = "Launching...";
+  await runInitialRoute();
+  bootLoaderEl.classList.add("bootLoader--done");
+  setTimeout(() => {
+    bootLoaderEl.classList.add("hidden");
+    maybeOpenDailyRewardPopup(false);
+  }, 260);
+}
+
+bootStartBtn.addEventListener("click", () => {
+  beginPlayFromBoot().catch(() => {
+    bootLoaderTextEl.textContent = "Start failed. Refresh and try again.";
+    bootStartBtn.disabled = false;
+    BOOT.started = false;
+  });
+});
+
+void prepareBoot();
 
 requestAnimationFrame(gameLoop);
 

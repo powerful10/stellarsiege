@@ -42,14 +42,23 @@ window.GA_MEASUREMENT_ID = "";
 // provider:
 // - "none"    => disables rewarded ad claiming
 // - "admanager" => Google Ad Manager GPT rewarded ad
-// - "custom"  => expects window.stellarAds.showRewardedAd({ placement }) to return { completed: true/false }
+// - "monetag" => Monetag rewarded flow (configure monetagShowFn + monetagScriptUrl if needed)
 //
 // mockEnabled should be false in production.
 window.ADS_CONFIG = {
   provider: "none",
-  adUnitPath: "",
-  dailyRewardCap: 5,
+  sessionRewardCap: 5,
+  dailyRewardCap: 20,
   cooldownSeconds: 60,
+
+  // Ad Manager configuration:
+  adUnitPath: "",
+
+  // Monetag configuration placeholders:
+  monetagShowFn: "YOUR_MONETAG_REWARDED_FUNCTION_NAME",
+  monetagScriptUrl: "YOUR_MONETAG_SCRIPT_URL",
+
+  // Dev-only fallback simulator:
   mockEnabled: false,
   mockSeconds: 12,
 };

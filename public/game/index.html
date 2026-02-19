@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <base href="/game/" />
   <title>Stellar Siege — Roguelite Arena</title>
   <meta name="description" content="Stellar Siege is a browser-based roguelite space shooter with Survival, Campaign, and Online Duel modes." />
   <meta name="keywords" content="stellar siege, browser game, web shooter, roguelite shooter, online pvp game, space shooter" />
@@ -17,25 +18,18 @@
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <link rel="apple-touch-icon" href="favicon.svg" />
 
-  <!-- Monetization (AdSense) -->
-  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5266296505652960" crossorigin="anonymous"></script>
 </head>
 <body>
   <div class="layout">
-    <!-- Optional ad slot (enable after AdSense approval + ad unit setup) -->
-    <!--
-    <div class="adSlot">
-      <ins class="adsbygoogle"
-           style="display:block"
-           data-ad-client="ca-pub-XXXXXXXXXXXXXXX"
-           data-ad-slot="YYYYYYYYYY"
-           data-ad-format="auto"
-           data-full-width-responsive="true"></ins>
-      <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
-    </div>
-    -->
-
   <div id="gameRoot" class="gameRoot">
+  <div id="bootLoader" class="bootLoader">
+    <div class="bootLoader__panel">
+      <h1>Stellar Siege</h1>
+      <p id="bootLoaderText">Preparing systems...</p>
+      <div class="bootLoader__bar"><div id="bootLoaderFill" class="bootLoader__fill"></div></div>
+      <button id="bootStartBtn" class="btn" disabled>Start Mission</button>
+    </div>
+  </div>
   <div class="ui" id="ui">
     <div class="topLeft">
       <button id="menuBtn" class="menuBtn" aria-label="Menu">☰</button>
@@ -46,7 +40,7 @@
         <button id="menuCampaignBtn" class="btnGhost">Campaign</button>
         <button id="menuHangarBtn" class="btnGhost">Hangar</button>
         <button id="menuLeaderboardBtn" class="btnGhost">Leaderboard</button>
-        <button id="menuOnlineBtn" class="btnGhost">Online</button>
+        <button id="menuOnlineBtn" class="btnGhost portal-hide">Online</button>
         <button id="sideFullscreenBtn" class="btnGhost">Fullscreen</button>
         <button id="sideInfoBtn" class="btnGhost">Game Info</button>
         <button id="menuResetBtn" class="btnGhost">Reset Progress</button>
@@ -125,10 +119,11 @@
           <button id="playCampaignBtn">Campaign</button>
           <button id="hangarBtn">Hangar & Upgrades</button>
           <button id="leaderboardBtn">Leaderboard</button>
-          <button id="onlineBtn">Online Duel (Beta)</button>
+          <button id="onlineBtn" class="portal-hide">Online Duel (Beta)</button>
           <button id="menuFullscreenBtn">Fullscreen</button>
           <button id="infoBtn">Game Info</button>
         </div>
+        <div class="missionBoard" id="missionBoard"></div>
         <div class="fine">
           Tip: Collect upgrade orbs mid-run. Spend Credits/Crystals in the Hangar.
         </div>
@@ -136,20 +131,6 @@
           <a href="/privacy.html" target="_blank" rel="noopener">Privacy</a> ·
           <a href="/terms.html" target="_blank" rel="noopener">Terms</a>
         </div>
-        <div class="adSlot" style="margin-top:14px" aria-label="Advertisement">
-          <ins class="adsbygoogle"
-               id="menuAdUnit1"
-               style="display:block"
-               data-ad-client="ca-pub-5266296505652960"
-               data-ad-slot="8978861106"
-               data-ad-format="auto"
-               data-full-width-responsive="true"></ins>
-        </div>
-        <script>
-          window.addEventListener("load", function () {
-            (adsbygoogle = window.adsbygoogle || []).push({});
-          }, { once: true });
-        </script>
       </div>
     </div>
 
@@ -167,14 +148,28 @@
           <div class="card">
             <h3>Ship Stats</h3>
             <div class="shipModel" id="shipModel"></div>
+            <div class="tierPicker" id="tierPicker">
+              <button id="tierT1Btn" class="btnGhost">T1</button>
+              <button id="tierT2Btn" class="btnGhost">T2</button>
+              <button id="tierT3Btn" class="btnGhost">T3</button>
+            </div>
+            <div id="unlockFx" class="unlockFx hidden">Unlocked!</div>
             <div id="shipPicker" class="shipPicker"></div>
             <div id="statsBox" class="stats"></div>
           </div>
           <div class="card">
             <h3>Upgrades</h3>
             <div id="upgradeList" class="list"></div>
+            <div id="hangarAdBox" class="adReward">
+              <div class="adReward__title">Optional Rewarded Boost</div>
+              <div class="adReward__text">Watch optional rewarded ads for a small progress boost.</div>
+              <div class="row">
+                <button id="hangarAdCreditsBtn" class="btn">Watch Ad → +350 Credits</button>
+                <button id="hangarAdCrystalsBtn" class="btnGhost">Watch Ad → +2 Crystals</button>
+              </div>
+            </div>
           </div>
-          <div class="card">
+          <div class="card portal-hide" id="storeCard">
             <h3>Store</h3>
             <div class="store">
               <div class="storeRow">
@@ -318,20 +313,26 @@
       </div>
     </div>
 
+    <div id="landscapeHint" class="landscapeHint hidden">Best in landscape. Portrait is still playable.</div>
+
     <div id="gameover" class="overlay hidden">
       <div class="panel">
         <h1 id="gameoverTitle">Signal Lost</h1>
+        <div id="newRecordBadge" class="newRecordBadge hidden">NEW RECORD!</div>
         <p id="gameoverSub" class="fine" style="margin:10px 0 18px"></p>
         <p>Score: <span id="finalScore">0</span></p>
         <p>Wave: <span id="finalWave">1</span></p>
         <p>Rewards: <span id="finalRewards">0</span></p>
         <div id="adRewardBox" class="adReward">
           <div class="adReward__title">Bonus Reward</div>
-          <div id="adRewardText" class="adReward__text">Watch an optional ad to earn extra rewards.</div>
-          <button id="adRewardBtn" class="btn">Watch Rewarded Ad</button>
+          <div id="adRewardText" class="adReward__text">Watch an optional ad to continue with a bonus reward.</div>
+          <button id="adRewardBtn" class="btn">Watch Ad → Continue Bonus</button>
         </div>
         <div class="row">
-          <button id="restartBtn" class="btn">Play Again</button>
+          <button id="restartBtn" class="btn">TRY AGAIN</button>
+          <button id="shareScoreBtn" class="btnGhost">SHARE SCORE</button>
+          <button id="copyLinkBtn" class="btnGhost">COPY LINK</button>
+          <button id="challengeFriendBtn" class="btnGhost">CHALLENGE FRIEND</button>
           <button id="toMenuBtn" class="btnGhost">Menu</button>
         </div>
       </div>
@@ -369,9 +370,10 @@
         <div class="infoSection">
           <h3>Ships & Roles</h3>
           <ul>
-            <li><strong>Scout</strong> — Balanced starter ship.</li>
-            <li><strong>Striker / Ranger</strong> — Faster and stronger for wave control.</li>
-            <li><strong>Astra / Warden / Valkyrie</strong> — Premium builds with higher stats and special bonuses.</li>
+            <li><strong>Scout / Striker</strong> — Fast all-round starters.</li>
+            <li><strong>Tank / Sniper / Bomber</strong> — Heavy defense, precision, or burst damage playstyles.</li>
+            <li><strong>Interceptor / Drone Carrier / Stealth</strong> — Mobility, utility, and advanced control builds.</li>
+            <li><strong>Warden / Valkyrie / Nova Revenant</strong> — Late-game elite ships with high mastery ceilings.</li>
           </ul>
           <div class="infoShips"></div>
         </div>
@@ -403,6 +405,20 @@
     </div>
 
     <div id="fsHint" class="fsHint hidden">Tip: Fullscreen is more comfortable. Press F on desktop or use the Fullscreen button on mobile.</div>
+    <div id="toast" class="toast hidden"></div>
+
+    <div id="dailyReward" class="overlay hidden">
+      <div class="panel">
+        <h2>Daily Reward</h2>
+        <p id="dailyRewardSummary" class="fine"></p>
+        <div id="dailyRewardLadder" class="dailyLadder"></div>
+        <div class="row">
+          <button id="dailyClaimBtn" class="btn">Claim Reward</button>
+          <button id="dailyDoubleBtn" class="btnGhost hidden">Double Reward (Watch Ad)</button>
+          <button id="dailyCloseBtn" class="btnGhost">Later</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <canvas id="game" width="960" height="600"></canvas>
@@ -415,21 +431,9 @@
     <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
     <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-database-compat.js"></script>
     <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+    <script defer src="ship-3d.js"></script>
     <script defer src="rewarded-adapter.js"></script>
     <script defer src="script.js"></script>
-
-    <!-- Optional ad slot (enable after AdSense approval + ad unit setup) -->
-    <!--
-    <div class="adSlot">
-      <ins class="adsbygoogle"
-           style="display:block"
-           data-ad-client="ca-pub-XXXXXXXXXXXXXXX"
-           data-ad-slot="ZZZZZZZZZZ"
-           data-ad-format="auto"
-           data-full-width-responsive="true"></ins>
-      <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
-    </div>
-    -->
   </div>
 </body>
 </html>
