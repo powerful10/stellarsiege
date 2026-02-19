@@ -2187,7 +2187,10 @@ buyCredits65kBtn.addEventListener("click", () => {
 
 convertBtn.addEventListener("click", () => {
   const spend = Math.min(50, SAVE.profile.crystals);
-  if (spend <= 0) return;
+  if (spend <= 0) {
+    showToast("Need crystals to convert.");
+    return;
+  }
   SAVE.profile.crystals -= spend;
   SAVE.profile.credits += spend * 200;
   // Never allow the client to "create" crystals. Shadow follows spending.
@@ -2196,6 +2199,7 @@ convertBtn.addEventListener("click", () => {
   if (isAuthed()) cloudPush().catch(() => {});
   renderHangar();
   updateTopBar();
+  showToast(`Converted ${spend} crystals into ${spend * 200} credits.`);
 });
 
 restartBtn.addEventListener("click", () => restartActiveRun());
@@ -2665,16 +2669,16 @@ function renderHangar() {
   if (!unlockFxTimer) unlockFxEl.classList.add("hidden");
 
   const authed = isAuthed();
-  const payReady = PAYMENTS_ENABLED && isHosted();
   const selectedShip = shipById(SAVE.profile.selectedShipId);
   const selectedState = ensureShipState(selectedShip.id);
   storeCardEl.classList.toggle("hidden", PORTAL_MODE || !PAYMENTS_ENABLED);
   hangarAuthWaitScheduled = false;
 
-  buy100Btn.disabled = PORTAL_MODE || !payReady || !authed;
-  buy550Btn.disabled = PORTAL_MODE || !payReady || !authed;
-  buyCredits10kBtn.disabled = PORTAL_MODE || !payReady || !authed;
-  buyCredits65kBtn.disabled = PORTAL_MODE || !payReady || !authed;
+  const storeHardDisabled = PORTAL_MODE || !PAYMENTS_ENABLED;
+  buy100Btn.disabled = storeHardDisabled;
+  buy550Btn.disabled = storeHardDisabled;
+  buyCredits10kBtn.disabled = storeHardDisabled;
+  buyCredits65kBtn.disabled = storeHardDisabled;
   convertBtn.disabled = false;
   if (!PAYMENTS_ENABLED) {
     buy100Btn.title = "Store coming soon.";
@@ -2687,10 +2691,10 @@ function renderHangar() {
     buyCredits10kBtn.title = "Store requires a hosted build.";
     buyCredits65kBtn.title = "Store requires a hosted build.";
   } else if (!authed) {
-    buy100Btn.title = "Sign in to purchase.";
-    buy550Btn.title = "Sign in to purchase.";
-    buyCredits10kBtn.title = "Sign in to purchase.";
-    buyCredits65kBtn.title = "Sign in to purchase.";
+    buy100Btn.title = "Tap to sign in, then purchase.";
+    buy550Btn.title = "Tap to sign in, then purchase.";
+    buyCredits10kBtn.title = "Tap to sign in, then purchase.";
+    buyCredits65kBtn.title = "Tap to sign in, then purchase.";
   } else {
     buy100Btn.title = "";
     buy550Btn.title = "";
@@ -2713,36 +2717,38 @@ function renderHangar() {
     btn.addEventListener("click", () => {
       // Allow selecting owned ships freely.
       if (st.owned) {
+        if (SAVE.profile.selectedShipId === s.id) return;
         SAVE.profile.selectedShipId = s.id;
         SAVE.profile.updatedAt = nowMs();
         saveNow();
+        showToast(`${s.name} selected.`);
         renderHangar();
         return;
       }
 
-      // First tap on locked ship previews silhouette/stats. Second tap can purchase.
+      // Locked ship: select for preview and offer purchase immediately.
       if (SAVE.profile.selectedShipId !== s.id) {
         SAVE.profile.selectedShipId = s.id;
         SAVE.profile.updatedAt = nowMs();
         saveNow();
+      }
+
+      const costText = s.priceCrystals ? `${s.priceCrystals} crystals` : `${s.priceCredits} credits`;
+      const ok = confirm(`Unlock ${s.name} for ${costText}?`);
+      if (!ok) {
         renderHangar();
         return;
       }
 
-      // Locked ship: offer purchase using local wallet progression.
-      const costText = s.priceCrystals ? `${s.priceCrystals} crystals` : `${s.priceCredits} credits`;
-      const ok = confirm(`Buy ${s.name} for ${costText}?`);
-      if (!ok) return;
-
       if (s.priceCrystals) {
         if (SAVE.profile.crystals < s.priceCrystals) {
-          alert("Not enough crystals. Buy a crystal pack first.");
+          showToast(`Need ${s.priceCrystals} crystals.`);
           return;
         }
         SAVE.profile.crystals -= s.priceCrystals;
       } else {
         if (SAVE.profile.credits < s.priceCredits) {
-          alert("Not enough credits. Play Survival/Campaign to earn credits.");
+          showToast(`Need ${s.priceCredits} credits.`);
           return;
         }
         SAVE.profile.credits -= s.priceCredits;
@@ -2763,6 +2769,7 @@ function renderHangar() {
       if (window.ship3D && typeof window.ship3D.playUnlockEffect === "function") {
         window.ship3D.playUnlockEffect();
       }
+      showToast(`${s.name} unlocked.`);
       renderHangar();
       updateTopBar();
     });
@@ -2833,15 +2840,29 @@ function renderHangar() {
 
     const btn = document.createElement("button");
     btn.className = "btn";
-    btn.textContent = lvl >= def.max ? "Max" : `Buy ${cost} ${def.currency}`;
-    btn.disabled = !canBuy;
+    if (lvl >= def.max) {
+      btn.textContent = "Max";
+      btn.disabled = true;
+    } else if (canBuy) {
+      btn.textContent = `Buy ${cost} ${def.currency}`;
+      btn.disabled = false;
+    } else {
+      btn.textContent = `Need ${cost} ${def.currency}`;
+      btn.disabled = false;
+    }
     btn.addEventListener("click", () => {
       if (lvl >= def.max) return;
       if (def.currency === "credits") {
-        if (SAVE.profile.credits < cost) return;
+        if (SAVE.profile.credits < cost) {
+          showToast(`Need ${cost} credits.`);
+          return;
+        }
         SAVE.profile.credits -= cost;
       } else {
-        if (SAVE.profile.crystals < cost) return;
+        if (SAVE.profile.crystals < cost) {
+          showToast(`Need ${cost} crystals.`);
+          return;
+        }
         SAVE.profile.crystals -= cost;
       }
       selectedState.upgrades[def.key] = lvl + 1;
@@ -2849,6 +2870,7 @@ function renderHangar() {
       saveNow();
       updateTopBar();
       cloudPush().catch(() => {});
+      showToast(`${def.name} upgraded to Lv ${lvl + 1}.`);
       renderHangar();
     });
 
