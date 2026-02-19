@@ -1222,6 +1222,11 @@ body.portal-mode .portal-hide {
   min-width: 150px;
 }
 
+#hangar .hangarActions,
+#hangar .hangarActions * {
+  pointer-events: auto;
+}
+
 .card {
   background: rgba(255,255,255,0.04);
   border: 1px solid rgba(255,255,255,0.08);

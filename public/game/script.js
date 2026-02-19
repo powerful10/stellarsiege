@@ -264,10 +264,10 @@ const menuOnlineBtn = must("menuOnlineBtn");
 const sideFullscreenBtn = must("sideFullscreenBtn");
 const sideInfoBtn = must("sideInfoBtn");
 const menuResetBtn = must("menuResetBtn");
-const tapAssistToggle = must("tapAssistToggle");
-const stickyLockToggle = must("stickyLockToggle");
-const aimAssistStrengthEl = must("aimAssistStrength");
-const aimAssistStrengthValueEl = must("aimAssistStrengthValue");
+const tapAssistToggle = $("tapAssistToggle");
+const stickyLockToggle = $("stickyLockToggle");
+const aimAssistStrengthEl = $("aimAssistStrength");
+const aimAssistStrengthValueEl = $("aimAssistStrengthValue");
 
 // Top-right auth UI
 const topSignInBtn = must("topSignInBtn");
@@ -285,7 +285,7 @@ if (PORTAL_MODE) {
 
 // Touch controls
 const touchShootBtn = must("touchShoot");
-const touchAutoLockBtn = must("touchAutoLockBtn");
+const touchAutoLockBtn = $("touchAutoLockBtn");
 const joystickBaseEl = must("joyBase");
 const joystickStickEl = must("joyStick");
 const touchControlsEl = document.querySelector(".touchControls");
@@ -816,6 +816,7 @@ function stickyLockEnabled() {
 }
 
 function applyAimAssistSettingsUI() {
+  if (!tapAssistToggle || !stickyLockToggle || !aimAssistStrengthEl || !aimAssistStrengthValueEl) return;
   tapAssistToggle.checked = tapAssistEnabled();
   stickyLockToggle.checked = stickyLockEnabled();
   const val = clamp(Math.floor(Number(SAVE.profile.aimAssistStrength || 0)), 0, 100);
@@ -1016,15 +1017,17 @@ function bindTouchBtn(el, onDown, onUp) {
 }
 
 bindTouchBtn(touchShootBtn, () => (input.shooting = true), () => (input.shooting = false));
-touchAutoLockBtn.addEventListener(
-  "pointerdown",
-  (event) => {
-    event.preventDefault();
-    triggerAutoRelock();
-    updateAutoLockButtonUi();
-  },
-  { passive: false }
-);
+if (touchAutoLockBtn) {
+  touchAutoLockBtn.addEventListener(
+    "pointerdown",
+    (event) => {
+      event.preventDefault();
+      triggerAutoRelock();
+      updateAutoLockButtonUi();
+    },
+    { passive: false }
+  );
+}
 
 function setupJoystick() {
   if (!joystickBaseEl || !joystickStickEl) return;
@@ -2059,8 +2062,10 @@ function exitHangarToHome(event) {
 
 backFromHangarBtn.addEventListener("click", exitHangarToHome);
 backFromHangarBtn.addEventListener("pointerup", exitHangarToHome);
-hangarHomeBtn.addEventListener("click", exitHangarToHome);
-hangarHomeBtn.addEventListener("pointerup", exitHangarToHome);
+if (hangarHomeBtn) {
+  hangarHomeBtn.addEventListener("click", exitHangarToHome);
+  hangarHomeBtn.addEventListener("pointerup", exitHangarToHome);
+}
 backFromLeaderboardBtn.addEventListener("click", () => setState(STATE.MENU));
 backFromCampaignBtn.addEventListener("click", () => setState(STATE.MENU));
 backFromOnlineBtn.addEventListener("click", () => setState(STATE.MENU));
@@ -2269,28 +2274,34 @@ menuResetBtn.addEventListener("click", () => {
   window.location.reload();
 });
 
-tapAssistToggle.addEventListener("change", () => {
-  SAVE.profile.aimTapAssistEnabled = Boolean(tapAssistToggle.checked);
-  SAVE.profile.updatedAt = nowMs();
-  saveNow();
-  applyAimAssistSettingsUI();
-});
+if (tapAssistToggle) {
+  tapAssistToggle.addEventListener("change", () => {
+    SAVE.profile.aimTapAssistEnabled = Boolean(tapAssistToggle.checked);
+    SAVE.profile.updatedAt = nowMs();
+    saveNow();
+    applyAimAssistSettingsUI();
+  });
+}
 
-stickyLockToggle.addEventListener("change", () => {
-  SAVE.profile.aimStickyLockEnabled = Boolean(stickyLockToggle.checked);
-  if (!SAVE.profile.aimStickyLockEnabled) clearAimTarget();
-  SAVE.profile.updatedAt = nowMs();
-  saveNow();
-  applyAimAssistSettingsUI();
-  updateAutoLockButtonUi();
-});
+if (stickyLockToggle) {
+  stickyLockToggle.addEventListener("change", () => {
+    SAVE.profile.aimStickyLockEnabled = Boolean(stickyLockToggle.checked);
+    if (!SAVE.profile.aimStickyLockEnabled) clearAimTarget();
+    SAVE.profile.updatedAt = nowMs();
+    saveNow();
+    applyAimAssistSettingsUI();
+    updateAutoLockButtonUi();
+  });
+}
 
-aimAssistStrengthEl.addEventListener("input", () => {
-  SAVE.profile.aimAssistStrength = clamp(Math.floor(Number(aimAssistStrengthEl.value || 0)), 0, 100);
-  SAVE.profile.updatedAt = nowMs();
-  saveNow();
-  applyAimAssistSettingsUI();
-});
+if (aimAssistStrengthEl) {
+  aimAssistStrengthEl.addEventListener("input", () => {
+    SAVE.profile.aimAssistStrength = clamp(Math.floor(Number(aimAssistStrengthEl.value || 0)), 0, 100);
+    SAVE.profile.updatedAt = nowMs();
+    saveNow();
+    applyAimAssistSettingsUI();
+  });
+}
 
 // Online buttons (real online requires Firebase / server config)
 googleSignInBtn.addEventListener("click", () => onlineSignIn());
@@ -6262,9 +6273,22 @@ async function applyInitialRouteIntent() {
   }
 }
 
+function shouldForceHomeMenuOnBoot() {
+  const path = normalizePath(window.location.pathname);
+  const menuPaths = new Set(["/", "/game", "/game/index", "/game/index.html"]);
+  if (menuPaths.has(path)) return false;
+  // Explicit deep-link override for QA/debug if ever needed.
+  if (QUERY.get("deeplink") === "1") return false;
+  return true;
+}
+
 async function runInitialRoute() {
   initializeAppState();
   try {
+    if (shouldForceHomeMenuOnBoot()) {
+      setState(STATE.MENU);
+      return;
+    }
     await applyInitialRouteIntent();
   } catch (err) {
     console.error("[BOOT] route intent failed", err);
