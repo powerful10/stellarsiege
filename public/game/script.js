@@ -455,7 +455,7 @@ function routeForRunState() {
 function routeForUiState(next) {
   if (next === STATE.MENU) return "/game/index.html";
   // Keep menu overlays on one stable URL to avoid mobile deep-link traps/cache confusion.
-  if (next === STATE.HANGAR) return "/game/index.html";
+  if (next === STATE.HANGAR) return "/hangar";
   if (next === STATE.LEADERBOARD) return "/game/index.html";
   if (next === STATE.CAMPAIGN) return "/game/index.html";
   if (next === STATE.ONLINE) return "/game/index.html";
@@ -469,6 +469,11 @@ function buildModeSearch() {
   if (PORTAL_MODE) parts.push("portal=1");
   if (DEV_MODE) parts.push("dev=1");
   return parts.length ? `?${parts.join("&")}` : "";
+}
+
+function openHangarRoute() {
+  const search = buildModeSearch();
+  window.location.href = `/hangar${search}`;
 }
 
 function syncRouteWithState(next) {
@@ -556,6 +561,10 @@ function showFullscreenHint() {
 }
 
 function setState(next) {
+  if (next === STATE.HANGAR) {
+    openHangarRoute();
+    return;
+  }
   state = next;
   document.body.setAttribute("data-state", next);
   document.body.classList.toggle("hangar-open", next === STATE.HANGAR);
@@ -2047,10 +2056,8 @@ playCampaignBtn.addEventListener("click", () => {
   renderCampaignMissions();
   setState(STATE.CAMPAIGN);
 });
-hangarBtn.addEventListener("click", async () => {
-  await waitForAuthRestore();
-  renderHangar();
-  setState(STATE.HANGAR);
+hangarBtn.addEventListener("click", () => {
+  openHangarRoute();
 });
 leaderboardBtn.addEventListener("click", () => {
   renderLeaderboard("local");
@@ -2263,11 +2270,9 @@ menuCampaignBtn.addEventListener("click", () => {
   setState(STATE.CAMPAIGN);
 });
 
-menuHangarBtn.addEventListener("click", async () => {
+menuHangarBtn.addEventListener("click", () => {
   setMenuOpen(false);
-  await waitForAuthRestore();
-  renderHangar();
-  setState(STATE.HANGAR);
+  openHangarRoute();
 });
 
 menuLeaderboardBtn.addEventListener("click", () => {
@@ -6309,9 +6314,7 @@ async function applyInitialRouteIntent() {
   }
 
   if (path === "/game/hangar") {
-    await waitForAuthRestore();
-    renderHangar();
-    setState(STATE.HANGAR);
+    openHangarRoute();
     return;
   }
 
