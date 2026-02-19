@@ -2077,6 +2077,13 @@ function setTierPickerState(tier) {
 async function renderShipPreview(shipId, tier, locked = false) {
   const t = tierFromIndex(tier);
   setTierPickerState(t);
+  const preferSvgPreview =
+    (isTouchDevice() && Math.min(window.innerWidth || 0, window.innerHeight || 0) <= 900) ||
+    Boolean(window.matchMedia && window.matchMedia("(max-width: 900px)").matches);
+  if (preferSvgPreview) {
+    shipModelEl.innerHTML = shipSvg(shipId, t - 1);
+    return;
+  }
   if (!window.ship3D || typeof window.ship3D.ensureHangar !== "function") {
     shipModelEl.innerHTML = shipSvg(shipId, t - 1);
     return;

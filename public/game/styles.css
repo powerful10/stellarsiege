@@ -573,6 +573,7 @@ canvas#game {
   background: rgba(9, 13, 29, 0.78);
   backdrop-filter: blur(10px);
   pointer-events: auto;
+  z-index: 20;
 }
 
 .panel {
@@ -1592,6 +1593,158 @@ body[data-state="run"] .topCenterBrand {
 
 body[data-state="run"] .topRight {
   display: none;
+}
+
+body[data-state="menu"] .topLeft,
+body[data-state="hangar"] .topLeft,
+body[data-state="leaderboard"] .topLeft,
+body[data-state="campaign"] .topLeft,
+body[data-state="online"] .topLeft,
+body[data-state="account"] .topLeft,
+body[data-state="pick"] .topLeft,
+body[data-state="over"] .topLeft {
+  display: none;
+}
+
+body[data-state="menu"] .topCenterBrand,
+body[data-state="hangar"] .topCenterBrand,
+body[data-state="leaderboard"] .topCenterBrand,
+body[data-state="campaign"] .topCenterBrand,
+body[data-state="online"] .topCenterBrand,
+body[data-state="account"] .topCenterBrand,
+body[data-state="pick"] .topCenterBrand,
+body[data-state="over"] .topCenterBrand {
+  display: none;
+}
+
+body[data-state="menu"] .topRight,
+body[data-state="hangar"] .topRight,
+body[data-state="leaderboard"] .topRight,
+body[data-state="campaign"] .topRight,
+body[data-state="online"] .topRight,
+body[data-state="account"] .topRight,
+body[data-state="pick"] .topRight,
+body[data-state="over"] .topRight {
+  display: none;
+}
+
+@media (pointer: coarse) {
+  #hangar {
+    align-items: stretch;
+  }
+
+  #hangar .panel.panel--wide {
+    width: 100vw;
+    max-width: 100vw;
+    min-height: 100vh;
+    min-height: 100dvh;
+    max-height: 100vh;
+    max-height: 100dvh;
+    border-radius: 0;
+    padding: 12px 10px 22px;
+    overflow-y: auto;
+  }
+
+  #hangar .panelTop {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: rgba(10, 15, 35, 0.95);
+    padding: 8px 4px 10px;
+    margin-bottom: 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+
+  #hangar .panelTop h2 {
+    font-size: 26px;
+  }
+
+  #hangar .hangarGrid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  #hangar .card {
+    padding: 10px;
+    border-radius: 12px;
+  }
+
+  #hangar .shipModel {
+    height: min(34vh, 230px);
+    margin: 8px 0;
+  }
+
+  #hangar .tierPicker {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  #hangar .shipPicker {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin: 8px 0 10px;
+  }
+
+  #hangar .shipBtn {
+    min-height: 46px;
+    border-radius: 10px;
+    font-size: 13px;
+    line-height: 1.2;
+    white-space: normal;
+    word-break: break-word;
+  }
+
+  #hangar .stats .statRow {
+    font-size: 12px;
+  }
+
+  #hangar .statBarRow {
+    grid-template-columns: 56px 1fr;
+    font-size: 11px;
+  }
+
+  #hangar .list {
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
+  }
+
+  #hangar .upgRow {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  #hangar .upgRow .btn {
+    width: 100%;
+  }
+
+  #hangar .adReward .row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  #hangar .adReward .row .btn,
+  #hangar .adReward .row .btnGhost {
+    width: 100%;
+  }
+
+  #hangar .storeRow {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  #hangar .storeRow .btn {
+    width: 100%;
+  }
+
+  #hangar .panelTop__right {
+    gap: 6px;
+  }
+
+  #hangar #pilotPill {
+    font-size: 10px;
+    padding: 5px 8px;
+  }
 }
 
 @media (orientation: portrait) and (pointer: coarse) {
