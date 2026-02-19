@@ -340,6 +340,7 @@ let forcedPreviewTier = null;
 let unlockFxTimer = null;
 let currentGameShipKey = "";
 let game3DReady = false;
+const SIMPLE_HANGAR_MODE = true;
 
 function tierFromIndex(idx) {
   return Math.max(1, Math.min(3, Math.floor(Number(idx || 1))));
@@ -2457,16 +2458,19 @@ dailyDoubleBtn.addEventListener("click", async () => {
 });
 
 tierT1Btn.addEventListener("click", () => {
+  if (SIMPLE_HANGAR_MODE) return;
   forcedPreviewTier = 1;
   if (state === STATE.HANGAR) renderHangar();
 });
 
 tierT2Btn.addEventListener("click", () => {
+  if (SIMPLE_HANGAR_MODE) return;
   forcedPreviewTier = 2;
   if (state === STATE.HANGAR) renderHangar();
 });
 
 tierT3Btn.addEventListener("click", () => {
+  if (SIMPLE_HANGAR_MODE) return;
   forcedPreviewTier = 3;
   if (state === STATE.HANGAR) renderHangar();
 });
@@ -2520,6 +2524,10 @@ function setTierPickerState(tier) {
 async function renderShipPreview(shipId, tier, locked = false) {
   const t = tierFromIndex(tier);
   setTierPickerState(t);
+  if (SIMPLE_HANGAR_MODE) {
+    shipModelEl.innerHTML = shipSvg(shipId, t - 1);
+    return;
+  }
   if (!window.ship3D || typeof window.ship3D.ensureHangar !== "function") {
     shipModelEl.innerHTML = shipSvg(shipId, t - 1);
     return;
@@ -2761,7 +2769,10 @@ function renderHangar() {
     shipPickerEl.appendChild(btn);
   });
 
-  const tier = previewVisualTierForShip(selectedShip.id);
+  tierPickerEl.classList.toggle("hidden", SIMPLE_HANGAR_MODE);
+  const tier = SIMPLE_HANGAR_MODE
+    ? gameplayVisualTierForShip(selectedShip.id)
+    : previewVisualTierForShip(selectedShip.id);
   void renderShipPreview(selectedShip.id, tier, !selectedState.owned);
 
   // Stats preview for current ship

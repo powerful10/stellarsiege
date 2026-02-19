@@ -1796,9 +1796,9 @@ body.hangar-open .topRight {
     touch-action: pan-y;
   }
 
-  #hangar.overlay {
+  #hangar.overlay:not(.hidden) {
     z-index: 25;
-    display: block;
+    display: grid;
     align-items: stretch;
     justify-items: stretch;
     overflow-y: auto;
