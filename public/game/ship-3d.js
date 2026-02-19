@@ -15,6 +15,16 @@
     nova_revenant: { body: 0xe879f9, accent: 0xf0abfc },
   };
 
+  const enemyShipMap = {
+    drone: "scout",
+    fighter: "striker",
+    sniper: "sniper",
+    rammer: "tank",
+    boss: "nova_revenant",
+    duelist: "valkyrie",
+    pvp: "stealth",
+  };
+
   let threePromise = null;
 
   function loadScript(src) {
@@ -205,6 +215,8 @@
     layer: null,
     ship: null,
     shield: null,
+    enemyMeshes: new Map(),
+    droneMeshes: new Map(),
     width: 0,
     height: 0,
     ready: false,
@@ -306,6 +318,8 @@
       game.camera = new THREE.OrthographicCamera(0, width, height, 0, -200, 200);
       game.camera.position.set(0, 0, 20);
       game.camera.lookAt(0, 0, 0);
+      game.enemyMeshes.clear();
+      game.droneMeshes.clear();
 
       game.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
       game.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.8));
@@ -344,6 +358,110 @@
     game.camera.top = 0;
     game.camera.bottom = height;
     game.camera.updateProjectionMatrix();
+  }
+
+  function meshScaleForSize(size, fallback = 18) {
+    const s = Math.max(8, Number(size || fallback));
+    return s * 0.58;
+  }
+
+  function clearMeshMap(meshMap) {
+    meshMap.forEach((entry) => {
+      if (entry && entry.mesh && game.scene) game.scene.remove(entry.mesh);
+    });
+    meshMap.clear();
+  }
+
+  function resetGameScene() {
+    clearMeshMap(game.enemyMeshes);
+    clearMeshMap(game.droneMeshes);
+    if (game.ship && game.scene) {
+      game.scene.remove(game.ship);
+      game.ship = null;
+    }
+    if (game.shield && game.shield.material) {
+      game.shield.material.opacity = 0;
+    }
+  }
+
+  function enemyTier(type, elite) {
+    if (type === "boss") return 3;
+    if (type === "duelist" || type === "pvp") return 2;
+    return elite ? 2 : 1;
+  }
+
+  function ensureEnemyMesh(id, type, elite) {
+    if (!game.ready || !window.THREE) return null;
+    const key = String(id || "");
+    if (!key) return null;
+    const shipId = enemyShipMap[type] || "striker";
+    const tier = enemyTier(type, elite);
+    const existing = game.enemyMeshes.get(key);
+    if (existing && existing.shipId === shipId && existing.tier === tier) return existing.mesh;
+    if (existing && existing.mesh && game.scene) game.scene.remove(existing.mesh);
+    const mesh = createShipMesh(window.THREE, shipId, tier, { silhouette: false });
+    game.scene.add(mesh);
+    game.enemyMeshes.set(key, { mesh, shipId, tier });
+    return mesh;
+  }
+
+  function ensureDroneMesh(id) {
+    if (!game.ready || !window.THREE) return null;
+    const key = String(id || "");
+    if (!key) return null;
+    const existing = game.droneMeshes.get(key);
+    if (existing && existing.mesh) return existing.mesh;
+    const mesh = createShipMesh(window.THREE, "drone_carrier", 1, { silhouette: false });
+    game.scene.add(mesh);
+    game.droneMeshes.set(key, { mesh });
+    return mesh;
+  }
+
+  function syncGameEntities(payload = {}) {
+    if (!game.ready) return;
+    const enemies = Array.isArray(payload.enemies) ? payload.enemies : [];
+    const drones = Array.isArray(payload.drones) ? payload.drones : [];
+
+    const enemySeen = new Set();
+    enemies.forEach((e) => {
+      const id = String(e && e.id ? e.id : "");
+      if (!id) return;
+      enemySeen.add(id);
+      const mesh = ensureEnemyMesh(id, String(e.type || "fighter"), Boolean(e.elite));
+      if (!mesh) return;
+      mesh.position.set(Number(e.x || 0), Number(e.y || 0), 0);
+      mesh.rotation.y = Math.PI;
+      mesh.rotation.z = Number(e.angle || 0);
+      const scale = meshScaleForSize(e.size, 18);
+      mesh.scale.setScalar(scale);
+      if (mesh.userData && mesh.userData.thruster) {
+        const pulse = 1 + Math.sin(Date.now() * 0.02 + scale) * 0.1;
+        mesh.userData.thruster.scale.set(1, pulse, 1);
+      }
+    });
+    game.enemyMeshes.forEach((entry, id) => {
+      if (enemySeen.has(id)) return;
+      if (entry && entry.mesh && game.scene) game.scene.remove(entry.mesh);
+      game.enemyMeshes.delete(id);
+    });
+
+    const droneSeen = new Set();
+    drones.forEach((d) => {
+      const id = String(d && d.id ? d.id : "");
+      if (!id) return;
+      droneSeen.add(id);
+      const mesh = ensureDroneMesh(id);
+      if (!mesh) return;
+      mesh.position.set(Number(d.x || 0), Number(d.y || 0), 0);
+      mesh.rotation.y = Math.PI;
+      mesh.rotation.z = Number(d.angle || 0);
+      mesh.scale.setScalar(7.4);
+    });
+    game.droneMeshes.forEach((entry, id) => {
+      if (droneSeen.has(id)) return;
+      if (entry && entry.mesh && game.scene) game.scene.remove(entry.mesh);
+      game.droneMeshes.delete(id);
+    });
   }
 
   function setGameShip(shipId, tier) {
@@ -432,6 +550,12 @@
     },
     updateGamePlayer(data) {
       updateGamePlayer(data);
+    },
+    syncGameEntities(payload) {
+      syncGameEntities(payload);
+    },
+    resetGameScene() {
+      resetGameScene();
     },
     resizeGame(width, height) {
       resizeGame(width, height);

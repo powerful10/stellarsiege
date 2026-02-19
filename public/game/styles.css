@@ -874,6 +874,26 @@ body.portal-mode .portal-hide {
   gap: 8px;
 }
 
+.guestSyncBanner {
+  margin: 12px 0 8px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(0,0,0,0.2);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+  pointer-events: auto;
+}
+
+.guestSyncBanner__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .missionBoard__title {
   font-size: 12px;
   letter-spacing: 0.08em;
@@ -1411,6 +1431,15 @@ body.portal-mode .portal-hide {
   .onlineGrid {
     grid-template-columns: 1fr;
   }
+
+  .guestSyncBanner {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .guestSyncBanner__actions {
+    justify-content: flex-end;
+  }
 }
 
 @media (max-width: 720px) {
@@ -1630,6 +1659,10 @@ body[data-state="over"] .topRight {
 
 @media (pointer: coarse) {
   #hangar {
+    z-index: 25;
+  }
+
+  #hangar {
     align-items: stretch;
   }
 
@@ -1643,6 +1676,7 @@ body[data-state="over"] .topRight {
     border-radius: 0;
     padding: 12px 10px 22px;
     overflow-y: auto;
+    overflow-x: hidden;
   }
 
   #hangar .panelTop {
@@ -1683,6 +1717,8 @@ body[data-state="over"] .topRight {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
     margin: 8px 0 10px;
+    max-height: none;
+    overflow: visible;
   }
 
   #hangar .shipBtn {

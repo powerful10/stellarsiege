@@ -12,6 +12,13 @@ console.log("[Stellar Siege] boot");
 const $ = (id) => document.getElementById(id);
 const QUERY = new URLSearchParams(window.location.search);
 const PORTAL_MODE = QUERY.get("portal") === "1";
+const DEV_MODE = QUERY.get("dev") === "1";
+const PAYMENTS_ENABLED =
+  String(window.NEXT_PUBLIC_PAYMENTS_ENABLED == null ? "" : window.NEXT_PUBLIC_PAYMENTS_ENABLED)
+    .trim()
+    .toLowerCase() === "true";
+
+if (DEV_MODE) document.body.classList.add("dev-mode");
 
 function isTouchDevice() {
   return window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
@@ -171,6 +178,9 @@ const playCampaignBtn = must("playCampaignBtn");
 const hangarBtn = must("hangarBtn");
 const leaderboardBtn = must("leaderboardBtn");
 const onlineBtn = must("onlineBtn");
+const guestSyncBannerEl = must("guestSyncBanner");
+const guestSyncSignInBtn = must("guestSyncSignInBtn");
+const guestSyncCloseBtn = must("guestSyncCloseBtn");
 const menuFullscreenBtn = must("menuFullscreenBtn");
 const infoBtn = must("infoBtn");
 
@@ -219,6 +229,8 @@ const pickListEl = must("pickList");
 // Game over UI
 const finalScoreEl = must("finalScore");
 const finalWaveEl = must("finalWave");
+const finalKillsEl = must("finalKills");
+const finalBestKillsEl = must("finalBestKills");
 const finalRewardsEl = must("finalRewards");
 const gameoverTitleEl = must("gameoverTitle");
 const gameoverSubEl = must("gameoverSub");
@@ -361,7 +373,7 @@ function needsLandscape() {
 }
 
 function updateRotateOverlay() {
-  const showHint = state === STATE.RUN && needsLandscape();
+  const showHint = BOOT.started && needsLandscape() && state !== STATE.PICK && state !== STATE.OVER;
   rotateOverlayEl.classList.add("hidden");
   landscapeHintEl.classList.toggle("hidden", !showHint);
   return true;
@@ -417,9 +429,16 @@ function routeForUiState(next) {
   if (next === STATE.LEADERBOARD) return "/game/leaderboard";
   if (next === STATE.CAMPAIGN) return "/game/campaign";
   if (next === STATE.ONLINE) return PORTAL_MODE ? "/game/index.html" : "/game/onlinematch";
-  if (next === STATE.ACCOUNT) return "/game/account";
+  if (next === STATE.ACCOUNT) return PORTAL_MODE ? "/game/index.html" : "/game/account";
   if (next === STATE.RUN || next === STATE.PICK || next === STATE.OVER) return routeForRunState();
   return null;
+}
+
+function buildModeSearch() {
+  const parts = [];
+  if (PORTAL_MODE) parts.push("portal=1");
+  if (DEV_MODE) parts.push("dev=1");
+  return parts.length ? `?${parts.join("&")}` : "";
 }
 
 function syncRouteWithState(next) {
@@ -428,7 +447,7 @@ function syncRouteWithState(next) {
     if (!target) return;
     const current = normalizePath(window.location.pathname);
     const currentSearch = window.location.search || "";
-    const nextSearch = PORTAL_MODE ? "?portal=1" : "";
+    const nextSearch = buildModeSearch();
     if (current === target && currentSearch === nextSearch) return;
     window.history.replaceState({}, document.title, `${target}${nextSearch}`);
   } catch {
@@ -525,9 +544,13 @@ function setState(next) {
   if (next !== STATE.RUN && next !== STATE.PICK) {
     game3DReady = false;
     currentGameShipKey = "";
+    if (window.ship3D && typeof window.ship3D.resetGameScene === "function") {
+      window.ship3D.resetGameScene();
+    }
   }
   updateTouchControlsVisibility();
   updateRotateOverlay();
+  updateGuestSyncBanner();
   if (next === STATE.MENU) {
     claimReadyMissions();
     renderMissionBoard();
@@ -569,18 +592,45 @@ function setTopAuthUi({ signedIn, displayName, photoUrl }) {
   }
 }
 
+function isGuestSyncBannerDismissed() {
+  try {
+    return localStorage.getItem(GUEST_SYNC_BANNER_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function dismissGuestSyncBanner() {
+  try {
+    localStorage.setItem(GUEST_SYNC_BANNER_KEY, "1");
+  } catch {
+    // ignore localStorage failure
+  }
+  guestSyncBannerEl.classList.add("hidden");
+}
+
+function updateGuestSyncBanner() {
+  if (PORTAL_MODE) {
+    guestSyncBannerEl.classList.add("hidden");
+    return;
+  }
+  cloudInit();
+  const shouldShow = state === STATE.MENU && CLOUD.enabled && !isAuthed() && !isGuestSyncBannerDismissed();
+  guestSyncBannerEl.classList.toggle("hidden", !shouldShow);
+}
+
 function renderAccountPanel() {
   cloudInit();
 
   if (!CLOUD.enabled) {
-    accountBoxEl.innerHTML = `<div class="fine">Account features require Firebase config + hosting over http(s).</div>`;
+    accountBoxEl.innerHTML = `<div class="fine">${withDevDetails("Cloud sync is currently unavailable.", CLOUD.devStatus)}</div>`;
     accountSyncBtn.disabled = true;
     accountSignOutBtn.disabled = true;
     return;
   }
 
   if (!CLOUD.user) {
-    accountBoxEl.innerHTML = `<div class="fine">You are not signed in. Use вЂњSign in with GoogleвЂќ.</div>`;
+    accountBoxEl.innerHTML = `<div class="fine">You are in guest mode. Sign in to sync progress across devices.</div>`;
     accountSyncBtn.disabled = true;
     accountSignOutBtn.disabled = true;
     return;
@@ -612,6 +662,7 @@ function renderAccountPanel() {
     { label: "Games", value: `${SAVE.profile.gamesPlayed || 0} total` },
     { label: "Online W/L", value: `${SAVE.profile.onlineWins || 0}/${SAVE.profile.onlineLosses || 0}` },
     { label: "Best Score", value: `${SAVE.profile.bestScore}` },
+    { label: "Best Survival Kills", value: `${Math.max(0, Number(SAVE.profile.bestSurvivalKills || 0))}` },
   ];
 
   accountBoxEl.innerHTML = grid(items);
@@ -832,6 +883,8 @@ canvas.addEventListener("touchend", () => {
 // -----------------------------
 
 const SAVE_KEY = "stellar_siege_save_v5";
+const GUEST_SYNC_BANNER_KEY = "stellar_sync_banner_dismissed_v1";
+const CLOUD_SYNC_CHOICE_PREFIX = "stellar_sync_choice_uid_";
 
 function defaultSave() {
   return {
@@ -844,6 +897,7 @@ function defaultSave() {
       crystalsShadow: 0,
       bestScore: 0,
       bestWave: 1,
+      bestSurvivalKills: null,
       campaignUnlocked: 1,
       selectedShipId: "scout",
       gamesPlayed: 0,
@@ -1259,6 +1313,12 @@ function migrateSave() {
   if (!Number.isFinite(Number(SAVE.profile.adRewardLastAt))) SAVE.profile.adRewardLastAt = 0;
   if (!Number.isFinite(Number(SAVE.profile.adIntegrityLastAt))) SAVE.profile.adIntegrityLastAt = 0;
   if (typeof SAVE.profile.adRewardsDay !== "string") SAVE.profile.adRewardsDay = "";
+  if (SAVE.profile.bestSurvivalKills == null || SAVE.profile.bestSurvivalKills === "") {
+    SAVE.profile.bestSurvivalKills = null;
+  } else {
+    const bestKills = Number(SAVE.profile.bestSurvivalKills);
+    SAVE.profile.bestSurvivalKills = Number.isFinite(bestKills) && bestKills >= 0 ? Math.floor(bestKills) : null;
+  }
   if (!Number.isFinite(Number(SAVE.profile.dailyClaimTimestamp))) SAVE.profile.dailyClaimTimestamp = 0;
   if (!Number.isFinite(Number(SAVE.profile.dailyStreakDay))) SAVE.profile.dailyStreakDay = 0;
   if (typeof SAVE.profile.missionDayKey !== "string") SAVE.profile.missionDayKey = "";
@@ -1618,11 +1678,20 @@ function isAuthed() {
   return Boolean(CLOUD.enabled && CLOUD.user);
 }
 
-// If Firebase is configured and we're hosted, we treat progression/purchases as account-based.
-// This keeps the "real" economy tied to a Google account (and lets you monetize safely).
 function progressionRequiresAuth() {
-  if (PORTAL_MODE) return false;
-  return isHosted() && hasFirebaseConfig();
+  return false;
+}
+
+function withDevDetails(message, detail = "") {
+  const base = String(message || "");
+  if (!DEV_MODE) return base;
+  const d = String(detail || "").trim();
+  if (!d) return base;
+  return `${base} (${d})`;
+}
+
+function setOnlineHint(message, devDetail = "") {
+  onlineHintEl.textContent = withDevDetails(message, devDetail);
 }
 
 function showToast(message, durationMs = 2200) {
@@ -1712,6 +1781,11 @@ leaderboardBtn.addEventListener("click", () => {
 onlineBtn.addEventListener("click", () => {
   if (PORTAL_MODE) {
     showToast("Online mode is disabled in portal build.");
+    return;
+  }
+  cloudInit();
+  if (!CLOUD.enabled || !CLOUD.rtdb) {
+    showToast("Online duel is coming soon.");
     return;
   }
   onlineInit();
@@ -1818,13 +1892,6 @@ buyCredits65kBtn.addEventListener("click", () => {
 });
 
 convertBtn.addEventListener("click", () => {
-  cloudInit();
-  if (progressionRequiresAuth() && !isAuthed()) {
-    alert("Please sign in with Google before converting. (Account-based progression.)");
-    setState(STATE.ONLINE);
-    return;
-  }
-
   const spend = Math.min(50, SAVE.profile.crystals);
   if (spend <= 0) return;
   SAVE.profile.crystals -= spend;
@@ -1917,6 +1984,11 @@ menuOnlineBtn.addEventListener("click", () => {
     showToast("Online mode is disabled in portal build.");
     return;
   }
+  cloudInit();
+  if (!CLOUD.enabled || !CLOUD.rtdb) {
+    showToast("Online duel is coming soon.");
+    return;
+  }
   onlineInit();
   setState(STATE.ONLINE);
 });
@@ -1960,10 +2032,28 @@ topAccountBtn.addEventListener("click", () => {
   renderAccountPanel();
   setState(STATE.ACCOUNT);
 });
+guestSyncSignInBtn.addEventListener("click", () => {
+  if (PORTAL_MODE) return;
+  cloudInit();
+  if (!CLOUD.enabled) {
+    showToast("Sign-in sync is unavailable right now.");
+    return;
+  }
+  onlineInit();
+  setState(STATE.ONLINE);
+});
+guestSyncCloseBtn.addEventListener("click", () => {
+  dismissGuestSyncBanner();
+});
 closeAccountBtn.addEventListener("click", () => setState(STATE.MENU));
 accountToOnlineBtn.addEventListener("click", () => {
   if (PORTAL_MODE) {
     showToast("Online mode is disabled in portal build.");
+    return;
+  }
+  cloudInit();
+  if (!CLOUD.enabled || !CLOUD.rtdb) {
+    showToast("Online duel is coming soon.");
     return;
   }
   onlineInit();
@@ -1994,21 +2084,52 @@ dailyClaimBtn.addEventListener("click", () => {
 dailyDoubleBtn.addEventListener("click", async () => {
   const st = dailyRewardState();
   if (!st.claimable) return;
-  const provider = getRewardedProvider();
-  if (!provider || !provider.isAvailable()) {
-    showToast("No ad available right now.");
+  const status = adRewardStatus();
+  if (status.remaining <= 0) {
+    showToast(`Daily rewarded cap reached (${ADS.dailyCap}/${ADS.dailyCap}).`);
+    renderDailyRewardPopup();
     return;
   }
+  if (status.sessionRemaining <= 0) {
+    showToast(`Session rewarded cap reached (${ADS.sessionCap}/${ADS.sessionCap}).`);
+    renderDailyRewardPopup();
+    return;
+  }
+  if (status.waitMs > 0) {
+    showToast(`Next rewarded ad in ${formatCooldown(status.waitMs)}.`);
+    renderDailyRewardPopup();
+    return;
+  }
+  if (adIntegrityBlocked()) {
+    showToast("No ad available, try later.");
+    renderDailyRewardPopup();
+    return;
+  }
+  const provider = getRewardedProvider();
+  if (!provider || !provider.isAvailable()) {
+    showToast("No ad available, try later.");
+    renderDailyRewardPopup();
+    return;
+  }
+  dailyDoubleBtn.disabled = true;
+  dailyDoubleBtn.textContent = "Starting Ad...";
   try {
-    const result = await provider.showRewardedAd({ placement: "daily_double" });
-    if (result && result.completed) {
-      grantDailyReward(2);
-    } else {
-      showToast("Ad not completed. You can still claim free reward.");
+    const completed = await requestRewardedAdCompletion("daily_double", (remaining) => {
+      dailyDoubleBtn.textContent = `Ad: ${remaining}s`;
+    });
+    if (!completed) {
+      showToast("No ad available, try later.");
+      return;
     }
+    if (!consumeAdRewardSlot()) {
+      showToast("Rewarded ad unavailable. Try later.");
+      return;
+    }
+    grantDailyReward(2);
   } catch {
-    showToast("Ad failed. Free claim is still available.");
+    showToast("No ad available, try later.");
   } finally {
+    dailyDoubleBtn.textContent = "Double Reward (Watch Ad)";
     renderDailyRewardPopup();
   }
 });
@@ -2077,13 +2198,6 @@ function setTierPickerState(tier) {
 async function renderShipPreview(shipId, tier, locked = false) {
   const t = tierFromIndex(tier);
   setTierPickerState(t);
-  const preferSvgPreview =
-    (isTouchDevice() && Math.min(window.innerWidth || 0, window.innerHeight || 0) <= 900) ||
-    Boolean(window.matchMedia && window.matchMedia("(max-width: 900px)").matches);
-  if (preferSvgPreview) {
-    shipModelEl.innerHTML = shipSvg(shipId, t - 1);
-    return;
-  }
   if (!window.ship3D || typeof window.ship3D.ensureHangar !== "function") {
     shipModelEl.innerHTML = shipSvg(shipId, t - 1);
     return;
@@ -2131,6 +2245,26 @@ function updateGame3DFrame() {
   const selectedState = ensureShipState(SAVE.profile.selectedShipId);
   const tier = gameplayVisualTierForShip(SAVE.profile.selectedShipId);
   const shieldRatio = player.shieldMax > 0 ? player.shield / player.shieldMax : 0;
+  if (typeof window.ship3D.syncGameEntities === "function") {
+    const enemies = entities.enemies.map((e) => ({
+      id: e.id,
+      type: e.type,
+      x: e.x,
+      y: e.y,
+      angle: Math.atan2(player.y - e.y, player.x - e.x),
+      size: e.size,
+      elite: Boolean(e.elite),
+      hp: e.hp,
+      maxHp: e.maxHp,
+    }));
+    const drones = entities.drones.map((d, idx) => ({
+      id: `d${idx}`,
+      x: d.x,
+      y: d.y,
+      angle: d.angle || 0,
+    }));
+    window.ship3D.syncGameEntities({ enemies, drones });
+  }
   window.ship3D.updateGamePlayer({
     x: player.x,
     y: player.y,
@@ -2200,44 +2334,32 @@ function renderHangar() {
   if (!unlockFxTimer) unlockFxEl.classList.add("hidden");
 
   const authed = isAuthed();
-  const payReady = isHosted(); // same-origin backend supported when PAYMENTS_API_BASE is empty
+  const payReady = PAYMENTS_ENABLED && isHosted();
   const selectedShip = shipById(SAVE.profile.selectedShipId);
   const selectedState = ensureShipState(selectedShip.id);
-  storeCardEl.classList.toggle("hidden", PORTAL_MODE);
-
-  // Store gating: real money purchase requires hosting + backend + account.
-  // Conversion is allowed only when signed in (or in local dev without Firebase).
-  if (CLOUD.enabled && !CLOUD.authResolved) {
-    buy100Btn.disabled = true;
-    buy550Btn.disabled = true;
-    buyCredits10kBtn.disabled = true;
-    buyCredits65kBtn.disabled = true;
-    convertBtn.disabled = true;
-    upgradeListEl.innerHTML = `<div class="fine">Checking your Google sign-in status...</div>`;
-    if (!hangarAuthWaitScheduled) {
-      hangarAuthWaitScheduled = true;
-      waitForAuthRestore().then(() => {
-        hangarAuthWaitScheduled = false;
-        renderHangar();
-      });
-    }
-    renderHangarRewardedActions();
-    return;
-  }
+  storeCardEl.classList.toggle("hidden", PORTAL_MODE || !PAYMENTS_ENABLED);
   hangarAuthWaitScheduled = false;
 
-  // Store gating: real money purchase requires hosting + backend + account.
-  // Conversion is allowed only when signed in (or in local dev without Firebase).
-  buy100Btn.disabled = !payReady || !authed;
-  buy550Btn.disabled = !payReady || !authed;
-  buyCredits10kBtn.disabled = !payReady || !authed;
-  buyCredits65kBtn.disabled = !payReady || !authed;
-  convertBtn.disabled = progressionRequiresAuth() ? !authed : false;
-  if (!authed) {
-    buy100Btn.title = "Sign in with Google to purchase.";
-    buy550Btn.title = "Sign in with Google to purchase.";
-    buyCredits10kBtn.title = "Sign in with Google to purchase.";
-    buyCredits65kBtn.title = "Sign in with Google to purchase.";
+  buy100Btn.disabled = PORTAL_MODE || !payReady || !authed;
+  buy550Btn.disabled = PORTAL_MODE || !payReady || !authed;
+  buyCredits10kBtn.disabled = PORTAL_MODE || !payReady || !authed;
+  buyCredits65kBtn.disabled = PORTAL_MODE || !payReady || !authed;
+  convertBtn.disabled = false;
+  if (!PAYMENTS_ENABLED) {
+    buy100Btn.title = "Store coming soon.";
+    buy550Btn.title = "Store coming soon.";
+    buyCredits10kBtn.title = "Store coming soon.";
+    buyCredits65kBtn.title = "Store coming soon.";
+  } else if (!isHosted()) {
+    buy100Btn.title = "Store requires a hosted build.";
+    buy550Btn.title = "Store requires a hosted build.";
+    buyCredits10kBtn.title = "Store requires a hosted build.";
+    buyCredits65kBtn.title = "Store requires a hosted build.";
+  } else if (!authed) {
+    buy100Btn.title = "Sign in to purchase.";
+    buy550Btn.title = "Sign in to purchase.";
+    buyCredits10kBtn.title = "Sign in to purchase.";
+    buyCredits65kBtn.title = "Sign in to purchase.";
   } else {
     buy100Btn.title = "";
     buy550Btn.title = "";
@@ -2276,16 +2398,10 @@ function renderHangar() {
         return;
       }
 
-      // Locked ship: offer purchase if signed in.
+      // Locked ship: offer purchase using local wallet progression.
       const costText = s.priceCrystals ? `${s.priceCrystals} crystals` : `${s.priceCredits} credits`;
       const ok = confirm(`Buy ${s.name} for ${costText}?`);
       if (!ok) return;
-
-      if (progressionRequiresAuth() && !authed) {
-        alert("Please sign in with Google first (Online -> Sign in). Purchases are account-based.");
-        setState(STATE.ONLINE);
-        return;
-      }
 
       if (s.priceCrystals) {
         if (SAVE.profile.crystals < s.priceCrystals) {
@@ -2356,18 +2472,11 @@ function renderHangar() {
     statRows.map((r) => `<div class="statRow"><span>${r[0]}</span><span>${r[1]}</span></div>`).join("") +
     `<div class="statBars">${bars}</div>`;
 
-  // Upgrades (account-based)
+  // Upgrades (guest/local first)
   upgradeListEl.innerHTML = "";
 
   if (!selectedState.owned) {
     upgradeListEl.innerHTML = `<div class="fine">This ship is locked. Buy it to upgrade.</div>`;
-    renderHangarRewardedActions();
-    return;
-  }
-
-  if (progressionRequiresAuth() && !authed) {
-    upgradeListEl.innerHTML =
-      `<div class="fine">Sign in with Google to upgrade ships and keep purchases synced across devices.</div>`;
     renderHangarRewardedActions();
     return;
   }
@@ -2462,6 +2571,7 @@ const CLOUD = {
   firestore: null,
   rtdb: null,
   status: "Offline",
+  devStatus: "",
 };
 
 const USERNAME_RE = /^[A-Za-z0-9_]{3,20}$/;
@@ -2499,15 +2609,19 @@ function paymentsApiBase() {
 
 async function startCrystalPurchase(packId) {
   const apiBase = paymentsApiBase();
+  if (!PAYMENTS_ENABLED) {
+    showToast("Store coming soon.");
+    return;
+  }
 
   if (!isHosted()) {
-    alert("Purchases require hosting on http:// or https:// (not file://). Start the server and open http://localhost.");
+    alert(withDevDetails("Store is unavailable in this build.", "Requires http(s) hosting."));
     return;
   }
 
   cloudInit();
   if (!CLOUD.enabled || !CLOUD.user) {
-    onlineHintEl.textContent = "Please sign in with Google before purchasing.";
+    setOnlineHint("Sign in to continue to checkout.", CLOUD.devStatus);
     setState(STATE.ONLINE);
     return;
   }
@@ -2523,14 +2637,16 @@ async function startCrystalPurchase(packId) {
   });
 
   if (!res.ok) {
-    let message = "Checkout failed.";
+    let message = "Store is unavailable right now.";
     try {
       const data = await res.json();
-      if (data && data.error) message = String(data.error);
-      if (res.status === 501) message = "Lemon Squeezy is not connected yet on the server.";
+      if (DEV_MODE && data && data.error) message = `${message} (${String(data.error)})`;
+      if (DEV_MODE && res.status === 501) message = `${message} (Checkout provider is not connected.)`;
     } catch {
-      const text = await res.text();
-      if (text) message = `Checkout failed: ${text}`;
+      if (DEV_MODE) {
+        const text = await res.text();
+        if (text) message = `${message} (${text})`;
+      }
     }
     throw new Error(message);
   }
@@ -2561,7 +2677,8 @@ function cloudInit() {
   if (PORTAL_MODE) {
     CLOUD.enabled = false;
     CLOUD.usernameReady = false;
-    CLOUD.status = "Offline (portal mode)";
+    CLOUD.status = "Portal mode enabled. Playing local guest mode.";
+    CLOUD.devStatus = "portal mode";
     markAuthResolved();
     updateAuthUi();
     return;
@@ -2569,7 +2686,8 @@ function cloudInit() {
   if (!hasSdk || !hasConfig) {
     CLOUD.enabled = false;
     CLOUD.usernameReady = false;
-    CLOUD.status = "Offline (no Firebase config)";
+    CLOUD.status = "Online duel is coming soon.";
+    CLOUD.devStatus = "Firebase SDK/config missing";
     markAuthResolved();
     updateAuthUi();
     return;
@@ -2577,7 +2695,8 @@ function cloudInit() {
   if (!isHosted()) {
     CLOUD.enabled = false;
     CLOUD.usernameReady = false;
-    CLOUD.status = "Offline (open via http://, not file://)";
+    CLOUD.status = "Online duel is unavailable in this build.";
+    CLOUD.devStatus = "Not hosted over http(s)";
     markAuthResolved();
     updateAuthUi();
     return;
@@ -2596,7 +2715,8 @@ function cloudInit() {
     CLOUD.firestore = window.firebase.firestore();
     CLOUD.rtdb = window.firebase.database ? window.firebase.database() : null;
     CLOUD.enabled = true;
-    CLOUD.status = "Ready";
+    CLOUD.status = "Online services ready.";
+    CLOUD.devStatus = "";
     updateAuthUi();
 
     CLOUD.auth.onAuthStateChanged(async (user) => {
@@ -2608,7 +2728,8 @@ function cloudInit() {
     console.warn("[CLOUD] init failed", err);
     CLOUD.enabled = false;
     CLOUD.usernameReady = false;
-    CLOUD.status = "Offline (Firebase init failed)";
+    CLOUD.status = "Online duel is unavailable right now.";
+    CLOUD.devStatus = String((err && err.message) || "Firebase init failed");
     markAuthResolved();
     updateAuthUi();
   }
@@ -2828,6 +2949,8 @@ function computeLocalSnapshot() {
     crystals: Number(SAVE.profile.crystals || 0),
     bestScore: Number(SAVE.profile.bestScore || 0),
     bestWave: Number(SAVE.profile.bestWave || 1),
+    bestSurvivalKills:
+      SAVE.profile.bestSurvivalKills == null ? null : Number(Math.max(0, SAVE.profile.bestSurvivalKills || 0)),
     campaignUnlocked: Number(SAVE.profile.campaignUnlocked || 1),
     selectedShipId: SAVE.profile.selectedShipId || "scout",
     gamesPlayed: Number(SAVE.profile.gamesPlayed || 0),
@@ -2867,12 +2990,15 @@ function mergeShips(localShips, remoteShips) {
   return out;
 }
 
-async function cloudPullMerge() {
+async function cloudPullMerge(options = {}) {
   const ref = cloudDocRef();
   if (!ref) return;
+  const strategy = String(options.strategy || "auto");
+  const preferRemote = strategy === "cloud";
+  const preferLocal = strategy === "local";
   const snap = await ref.get();
   if (!snap.exists) {
-    // First-time user: seed cloud
+    // First-time cloud profile: seed with local progress so sync can start.
     await ref.set(computeLocalSnapshot(), { merge: true });
     return;
   }
@@ -2881,24 +3007,20 @@ async function cloudPullMerge() {
   const localUpdated = Number(SAVE.profile.updatedAt || 0);
   const remoteUpdated = Number(remote.profile && remote.profile.updatedAt ? remote.profile.updatedAt : 0);
 
-  // Crystals are treated as cloud-authoritative (purchases are fulfilled server-side via Lemon Squeezy webhook).
   const remoteCrystals = Number(remote.profile && Number.isFinite(Number(remote.profile.crystals)) ? remote.profile.crystals : 0);
-  SAVE.profile.crystals = remoteCrystals;
-  SAVE.profile.crystalsShadow = remoteCrystals;
+  const useRemote = preferRemote || (!preferLocal && remoteUpdated > localUpdated);
 
-  // Prefer whichever is newer.
-  if (remoteUpdated > localUpdated) {
+  if (useRemote) {
     SAVE.profile = { ...SAVE.profile, ...(remote.profile || {}) };
-    // Keep crystals authoritative even when merging remote -> local.
     SAVE.profile.crystals = remoteCrystals;
     SAVE.profile.crystalsShadow = remoteCrystals;
-    SAVE.ships = mergeShips(SAVE.ships, remote.ships);
+    SAVE.ships = mergeShips(preferRemote ? {} : SAVE.ships, remote.ships);
     migrateSave();
     saveNow();
     return;
   }
 
-  // Local is newer: push local progress, but never increase crystals from the client.
+  // Local is newer or explicitly chosen: push local progress, but never increase crystals from the client.
   SAVE.ships = mergeShips(SAVE.ships, remote.ships);
   migrateSave();
   saveNow();
@@ -2976,11 +3098,11 @@ async function renderGlobalLeaderboard() {
   cloudInit();
 
   if (!CLOUD.enabled) {
-    leaderboardListEl.innerHTML = `<div class="fine">Global leaderboard requires Firebase config + hosting over http(s).</div>`;
+    leaderboardListEl.innerHTML = `<div class="fine">${withDevDetails("Global leaderboard is unavailable right now.", CLOUD.devStatus)}</div>`;
     return;
   }
   if (!CLOUD.user) {
-    leaderboardListEl.innerHTML = `<div class="fine">Sign in with Google to see global rankings.</div>`;
+    leaderboardListEl.innerHTML = `<div class="fine">Sign in to submit and view global rankings.</div>`;
     return;
   }
 
@@ -3031,6 +3153,65 @@ async function renderGlobalLeaderboard() {
   }
 }
 
+function cloudSyncChoiceKey(uid) {
+  return `${CLOUD_SYNC_CHOICE_PREFIX}${uid}`;
+}
+
+function readCloudSyncChoice(uid) {
+  try {
+    const v = localStorage.getItem(cloudSyncChoiceKey(uid));
+    return v === "local" || v === "cloud" ? v : "";
+  } catch {
+    return "";
+  }
+}
+
+function writeCloudSyncChoice(uid, choice) {
+  try {
+    localStorage.setItem(cloudSyncChoiceKey(uid), choice);
+  } catch {
+    // ignore localStorage failure
+  }
+}
+
+function hasMeaningfulLocalProgress() {
+  if (Number(SAVE.profile.gamesPlayed || 0) > 0) return true;
+  if (Number(SAVE.profile.xp || 0) > 0) return true;
+  if (Number(SAVE.profile.credits || 0) > 0) return true;
+  if (Number(SAVE.profile.crystals || 0) > 0) return true;
+  if (Number(SAVE.profile.campaignUnlocked || 1) > 1) return true;
+  if (Number(SAVE.profile.bestScore || 0) > 0) return true;
+  if (Number(SAVE.profile.bestWave || 1) > 1) return true;
+  if (Number(SAVE.profile.bestSurvivalKills || 0) > 0) return true;
+  for (const s of SHIPS) {
+    const st = ensureShipState(s.id);
+    if (s.id !== "scout" && st.owned) return true;
+    const upgradeTotal = Object.values(st.upgrades || {}).reduce((acc, n) => acc + Number(n || 0), 0);
+    if (upgradeTotal > 0) return true;
+  }
+  return false;
+}
+
+async function chooseCloudSyncStrategyOnSignIn() {
+  if (!CLOUD.user) return "auto";
+  const uid = String(CLOUD.user.uid || "");
+  if (!uid) return "auto";
+  const saved = readCloudSyncChoice(uid);
+  if (saved) return saved;
+
+  if (!hasMeaningfulLocalProgress()) {
+    writeCloudSyncChoice(uid, "cloud");
+    return "cloud";
+  }
+
+  const keepLocal = window.confirm(
+    "Choose sync option:\nOK = Keep Local Progress (upload local -> cloud)\nCancel = Use Cloud Progress (replace local)"
+  );
+  const choice = keepLocal ? "local" : "cloud";
+  writeCloudSyncChoice(uid, choice);
+  return choice;
+}
+
 async function cloudOnAuthChanged() {
   if (CLOUD.user) {
     if (trackedAuthUid !== CLOUD.user.uid) {
@@ -3043,7 +3224,8 @@ async function cloudOnAuthChanged() {
       saveNow();
     }
     try {
-      await cloudPullMerge();
+      const syncStrategy = await chooseCloudSyncStrategyOnSignIn();
+      await cloudPullMerge({ strategy: syncStrategy });
     } catch (err) {
       console.warn("[CLOUD] pull/merge failed", err);
     }
@@ -3064,46 +3246,69 @@ async function cloudOnAuthChanged() {
 
 function updateAuthUi() {
   authStatusEl.textContent = cloudUserLabel();
-  googleSignInBtn.disabled = !CLOUD.enabled;
-  signOutBtn.disabled = !CLOUD.enabled || !CLOUD.user;
+  googleSignInBtn.disabled = PORTAL_MODE || !CLOUD.enabled;
+  signOutBtn.disabled = PORTAL_MODE || !CLOUD.enabled || !CLOUD.user;
 
-  const canOnline = Boolean(CLOUD.enabled && CLOUD.user && CLOUD.rtdb && CLOUD.usernameReady);
+  const onlineConfigured = Boolean(CLOUD.enabled && CLOUD.rtdb);
+  const canOnline = Boolean(onlineConfigured && CLOUD.user && CLOUD.usernameReady);
   createRoomBtn.disabled = !canOnline;
   joinRoomBtn.disabled = !canOnline;
-  startDuelBtn.disabled = false; // starts online if room is ready, otherwise practice duel
+  startDuelBtn.disabled = false;
 
-  if (!CLOUD.enabled) {
-    onlineHintEl.textContent = CLOUD.status;
-    topSignInBtn.disabled = false;
-    topSignInBtn.title = "Sign-in requires Firebase config + hosting over http(s). Click to see Online setup.";
+  const showOnlineEntry = !PORTAL_MODE && onlineConfigured;
+  onlineBtn.classList.toggle("hidden", !showOnlineEntry);
+  menuOnlineBtn.classList.toggle("hidden", !showOnlineEntry);
+  if (!showOnlineEntry) {
+    onlineBtn.textContent = "Online Duel (Coming Soon)";
+    menuOnlineBtn.textContent = "Online (Coming Soon)";
+  } else {
+    onlineBtn.textContent = "Online Duel (Beta)";
+    menuOnlineBtn.textContent = "Online";
+  }
+
+  if (PORTAL_MODE) {
+    setOnlineHint("Portal mode: local single-player only.");
     setTopAuthUi({ signedIn: false });
+    updateGuestSyncBanner();
+    return;
+  }
+  if (!CLOUD.enabled) {
+    setOnlineHint(CLOUD.status, CLOUD.devStatus);
+    topSignInBtn.disabled = false;
+    topSignInBtn.title = "";
+    setTopAuthUi({ signedIn: false });
+    updateGuestSyncBanner();
     return;
   }
   if (!CLOUD.user) {
-    onlineHintEl.textContent = "Sign in to enable cloud saves, store purchases, and online duels.";
+    setOnlineHint("Sign in to sync progress and play online duel.");
     topSignInBtn.disabled = false;
     topSignInBtn.title = "";
     setTopAuthUi({ signedIn: false });
+    updateGuestSyncBanner();
     return;
   }
   if (!CLOUD.rtdb) {
-    onlineHintEl.textContent = "Realtime Database not available. Enable RTDB in Firebase + add databaseURL to FIREBASE_CONFIG.";
+    setOnlineHint("Online duel is unavailable right now.", "Realtime Database missing");
     topSignInBtn.disabled = false;
     topSignInBtn.title = "";
     setTopAuthUi({ signedIn: true, displayName: CLOUD.user.displayName, photoUrl: CLOUD.user.photoURL });
+    updateGuestSyncBanner();
     return;
   }
   if (!CLOUD.usernameReady) {
-    onlineHintEl.textContent = "Set a unique username to unlock online rooms and leaderboard identity.";
+    setOnlineHint("Choose a username to enter online rooms.");
     topSignInBtn.disabled = false;
     topSignInBtn.title = "";
     setTopAuthUi({ signedIn: true, displayName: CLOUD.user.displayName, photoUrl: CLOUD.user.photoURL });
+    updateGuestSyncBanner();
     return;
   }
-  onlineHintEl.textContent = "Signed in. Create or join a room to play a real online duel. Win by reducing opponent HP to 0.";
+  setOnlineHint("Signed in. Create or join a room to start an online duel.");
   topSignInBtn.disabled = false;
   topSignInBtn.title = "";
   setTopAuthUi({ signedIn: true, displayName: CLOUD.user.displayName, photoUrl: CLOUD.user.photoURL });
+  updateGuestSyncBanner();
 }
 
 const CAMPAIGN_MISSIONS = [
@@ -3455,9 +3660,10 @@ function onlineLeaveRoom() {
 async function onlineCreateRoom() {
   cloudInit();
   if (!onlineEnabled()) {
-    onlineHintEl.textContent = !CLOUD.enabled
-      ? "Online requires Firebase config + hosting over http(s)."
-      : "Sign in with Google to create a room.";
+    setOnlineHint(
+      !CLOUD.enabled ? "Online duel is unavailable right now." : "Sign in to create a room.",
+      CLOUD.devStatus
+    );
     return;
   }
 
@@ -3507,9 +3713,10 @@ async function onlineCreateRoom() {
 async function onlineJoinRoom(codeRaw) {
   cloudInit();
   if (!onlineEnabled()) {
-    onlineHintEl.textContent = !CLOUD.enabled
-      ? "Online requires Firebase config + hosting over http(s)."
-      : "Sign in with Google to join a room.";
+    setOnlineHint(
+      !CLOUD.enabled ? "Online duel is unavailable right now." : "Sign in to join a room.",
+      CLOUD.devStatus
+    );
     return;
   }
 
@@ -4365,7 +4572,7 @@ function endRun(reason) {
   player.alive = false;
   onlineDuelReportEnd(reason);
 
-  const keepRewards = !progressionRequiresAuth() || isAuthed();
+  const keepRewards = true;
   const runSeconds = Math.max(1, Math.floor(run.time));
   const farmMult = sessionCreditMultiplier();
 
@@ -4403,13 +4610,23 @@ function endRun(reason) {
 
   const prevBestScore = Number(SAVE.profile.bestScore || 0);
   const prevBestWave = Number(SAVE.profile.bestWave || 1);
-  const brokeBestScore = entry.score > prevBestScore;
-  const brokeBestWave = entry.wave > prevBestWave;
-  const newRecord = brokeBestScore || brokeBestWave;
+  if (entry.score > prevBestScore) SAVE.profile.bestScore = entry.score;
+  if (entry.wave > prevBestWave) SAVE.profile.bestWave = entry.wave;
 
-  // Best-run retention loop always persists locally.
-  if (brokeBestScore) SAVE.profile.bestScore = entry.score;
-  if (brokeBestWave) SAVE.profile.bestWave = entry.wave;
+  const currentRunKills = Math.max(0, Math.floor(run.kills || 0));
+  const hadBestKillsBefore =
+    SAVE.profile.bestSurvivalKills != null && Number.isFinite(Number(SAVE.profile.bestSurvivalKills));
+  const prevBestKills = hadBestKillsBefore ? Math.max(0, Math.floor(Number(SAVE.profile.bestSurvivalKills || 0))) : 0;
+  let newRecord = false;
+  if (run.mode === MODE.SURVIVAL) {
+    if (!hadBestKillsBefore) {
+      SAVE.profile.bestSurvivalKills = currentRunKills;
+    } else if (currentRunKills > 0 && currentRunKills > prevBestKills) {
+      SAVE.profile.bestSurvivalKills = currentRunKills;
+      newRecord = true;
+    }
+  }
+  const bestKillsForUi = Math.max(0, Math.floor(Number(SAVE.profile.bestSurvivalKills || 0)));
 
   applyMissionProgress({ kills: run.kills || 0, seconds: runSeconds, wave: entry.wave });
   claimReadyMissions();
@@ -4448,9 +4665,11 @@ function endRun(reason) {
 
   finalScoreEl.textContent = entry.score;
   finalWaveEl.textContent = entry.wave;
+  finalKillsEl.textContent = currentRunKills;
+  finalBestKillsEl.textContent = bestKillsForUi;
   finalRewardsEl.textContent = keepRewards
     ? `${credits} credits, ${crystals} crystals, ${xp} xp`
-    : `${credits} credits, ${crystals} crystals, ${xp} xp (not saved - sign in to keep rewards)`;
+    : `${credits} credits, ${crystals} crystals, ${xp} xp`;
 
   newRecordBadgeEl.classList.toggle("hidden", !newRecord);
 
@@ -4458,9 +4677,7 @@ function endRun(reason) {
   if (reason === "campaign_complete") {
     const nextId = (run.campaign && run.campaign.missionId ? run.campaign.missionId : 1) + 1;
     gameoverTitleEl.textContent = "You Win!";
-    gameoverSubEl.textContent = keepRewards
-      ? `Mission complete. Next mission unlocked: M${nextId}`
-      : "Mission complete. Sign in to unlock the next mission and keep rewards.";
+    gameoverSubEl.textContent = `Mission complete. Next mission unlocked: M${nextId}`;
   } else if (reason === "duel_win") {
     gameoverTitleEl.textContent = "Victory!";
     gameoverSubEl.textContent = "Opponent hull reached 0.";
@@ -4476,6 +4693,7 @@ function endRun(reason) {
     reason,
     score: Number(entry.score || 0),
     wave: Number(entry.wave || 0),
+    kills: Number(currentRunKills || 0),
     rewards_saved: keepRewards ? 1 : 0,
     farm_multiplier: Number(farmMult.toFixed(3)),
   });
@@ -4569,7 +4787,6 @@ function renderAdReward(reason) {
   if (!adRewardBoxEl || !adRewardBtn || !adRewardTextEl) return;
   const modeKey = run.mode === MODE.SURVIVAL ? "survival" : run.mode === MODE.CAMPAIGN ? "campaign" : "duel";
   const cfg = AD_REWARDS[modeKey];
-  const keepRewards = !progressionRequiresAuth() || isAuthed();
   const status = adRewardStatus();
 
   adRewardBoxEl.classList.remove("hidden");
@@ -4581,10 +4798,6 @@ function renderAdReward(reason) {
   if (run.adRewardClaimed) {
     adRewardBtn.disabled = true;
     adRewardBtn.textContent = "Claimed";
-    return;
-  }
-  if (!keepRewards) {
-    adRewardTextEl.textContent = "Sign in with Google to claim ad rewards.";
     return;
   }
   if (!hasRewardedAdapter()) {
@@ -4627,11 +4840,6 @@ function renderAdReward(reason) {
 
 function grantAdReward(cfg) {
   if (!cfg) return false;
-  const keepRewards = !progressionRequiresAuth() || isAuthed();
-  if (!keepRewards) {
-    adRewardTextEl.textContent = "Sign in to keep ad rewards.";
-    return false;
-  }
   SAVE.profile.credits += cfg.credits;
   SAVE.profile.crystals += cfg.crystals;
   SAVE.profile.crystalsShadow = Math.max(SAVE.profile.crystalsShadow || 0, SAVE.profile.crystals);
@@ -5285,8 +5493,10 @@ function drawShip(x, y, angle, main, accent, scale = 1) {
 
 function drawEnemies() {
   entities.enemies.forEach((e) => {
-    const angle = Math.atan2(player.y - e.y, player.x - e.x);
-    drawShip(e.x, e.y, angle, e.color, "rgba(255,255,255,0.5)", e.type === "boss" ? 1.5 : 1);
+    if (!game3DReady) {
+      const angle = Math.atan2(player.y - e.y, player.x - e.x);
+      drawShip(e.x, e.y, angle, e.color, "rgba(255,255,255,0.5)", e.type === "boss" ? 1.5 : 1);
+    }
 
     if (e.elite) {
       ctx.strokeStyle = "rgba(255, 219, 110, 0.9)";
@@ -5411,6 +5621,7 @@ function drawParticles() {
 }
 
 function drawDrones() {
+  if (game3DReady) return;
   entities.drones.forEach((d) => {
     drawShip(d.x, d.y, 0, "rgba(64,243,255,0.6)", "rgba(255,255,255,0.55)", 0.55);
   });
@@ -5631,17 +5842,17 @@ try {
           saveNow();
           updateTopBar();
           renderHangar();
-          onlineHintEl.textContent = "Purchase complete. Rewards synced to your cloud profile.";
+          setOnlineHint("Purchase complete. Rewards synced.");
         })
         .catch(() => {
-          onlineHintEl.textContent = "Purchase complete. Please open Online and sign in to sync rewards.";
+          setOnlineHint("Purchase complete. Reopen Online to sync rewards.");
         });
     } else {
-      onlineHintEl.textContent = "Purchase complete. Please sign in to sync rewards to your account.";
+      setOnlineHint("Purchase complete. Sign in to sync rewards.");
     }
   } else if (purchase === "cancel") {
     window.history.replaceState({}, document.title, window.location.pathname);
-    onlineHintEl.textContent = "Purchase canceled.";
+    setOnlineHint("Purchase canceled.");
   }
 } catch {
   // ignore
@@ -5692,6 +5903,10 @@ async function applyInitialRouteIntent() {
   }
 
   if (path === "/game/account") {
+    if (PORTAL_MODE) {
+      setState(STATE.MENU);
+      return;
+    }
     renderAccountPanel();
     setState(STATE.ACCOUNT);
   }

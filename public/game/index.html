@@ -44,7 +44,7 @@
         <button id="sideFullscreenBtn" class="btnGhost">Fullscreen</button>
         <button id="sideInfoBtn" class="btnGhost">Game Info</button>
         <button id="menuResetBtn" class="btnGhost">Reset Progress</button>
-        <div class="fine" style="margin:10px 6px 0">Tip: Sign in to save upgrades and purchases.</div>
+        <div class="fine" style="margin:10px 6px 0">Tip: Progress saves locally on this device.</div>
       </div>
     </div>
 
@@ -122,6 +122,13 @@
           <button id="onlineBtn" class="portal-hide">Online Duel (Beta)</button>
           <button id="menuFullscreenBtn">Fullscreen</button>
           <button id="infoBtn">Game Info</button>
+        </div>
+        <div id="guestSyncBanner" class="guestSyncBanner hidden">
+          <span>Sign in to sync progress + submit global leaderboard.</span>
+          <div class="guestSyncBanner__actions">
+            <button id="guestSyncSignInBtn" class="btnGhost">Sign in</button>
+            <button id="guestSyncCloseBtn" class="btnGhost" aria-label="Dismiss sync banner">X</button>
+          </div>
         </div>
         <div class="missionBoard" id="missionBoard"></div>
         <div class="fine">
@@ -207,7 +214,7 @@
                 </div>
                 <button class="btn" id="convertBtn">Convert</button>
               </div>
-              <div class="fine">Payments require hosting + a Lemon Squeezy backend. Crystals are delivered to your account after checkout.</div>
+              <div class="fine">Store items are available when enabled for this build.</div>
             </div>
           </div>
         </div>
@@ -261,7 +268,7 @@
               <button class="btn" id="googleSignInBtn">Sign in with Google</button>
               <button class="btnGhost" id="signOutBtn">Sign out</button>
             </div>
-            <div class="fine">For real auth, add Firebase config in `index.html` and host the site (not file://).</div>
+            <div class="fine">Sign in to sync progress, enter online rooms, and submit global scores.</div>
           </div>
           <div class="card">
             <h3>Matchmaking</h3>
@@ -273,7 +280,7 @@
             <div class="row" style="margin-top:10px; justify-content:flex-start">
               <button class="btn" id="startDuelBtn">Start Duel</button>
             </div>
-            <div id="onlineHint" class="fine">Online is disabled until Firebase is configured.</div>
+            <div id="onlineHint" class="fine">Sign in to play online duel.</div>
           </div>
         </div>
       </div>
@@ -293,7 +300,7 @@
           <button class="btnGhost" id="accountToOnlineBtn">Online</button>
           <button class="btnGhost" id="accountSignOutBtn">Sign out</button>
         </div>
-        <div class="fine">Tip: Purchases and upgrades are tied to your Google account when Firebase is configured.</div>
+        <div class="fine">Tip: Your local guest progress is always saved on this device.</div>
       </div>
     </div>
 
@@ -322,6 +329,8 @@
         <p id="gameoverSub" class="fine" style="margin:10px 0 18px"></p>
         <p>Score: <span id="finalScore">0</span></p>
         <p>Wave: <span id="finalWave">1</span></p>
+        <p>Kills: <span id="finalKills">0</span></p>
+        <p>Best Kills: <span id="finalBestKills">0</span></p>
         <p>Rewards: <span id="finalRewards">0</span></p>
         <div id="adRewardBox" class="adReward">
           <div class="adReward__title">Bonus Reward</div>

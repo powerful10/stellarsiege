@@ -32,6 +32,9 @@ window.FIREBASE_CONFIG = {
 // Optional: payments backend (Lemon Squeezy) base URL (same-origin if empty).
 // When you deploy the backend, set e.g.:
 // window.PAYMENTS_API_BASE = "https://yourdomain.com";
+// Enable store UI only when checkout backend is ready:
+// window.NEXT_PUBLIC_PAYMENTS_ENABLED = true;
+window.NEXT_PUBLIC_PAYMENTS_ENABLED = false;
 window.PAYMENTS_API_BASE = "";
 
 // Optional: GA4 measurement ID (for event analytics / funnel tracking).
