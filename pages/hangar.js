@@ -1,4 +1,5 @@
 import Head from "next/head";
+import Script from "next/script";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/router";
 
@@ -245,6 +246,24 @@ function upgradeCost(def, level) {
   return Math.floor(def.baseCost * Math.pow(def.growth, level));
 }
 
+function accountInitial(name, email) {
+  const source = String(name || email || "G").trim();
+  if (!source) return "G";
+  return source.slice(0, 1).toUpperCase();
+}
+
+function readGuestProfileName() {
+  try {
+    const parsed = safeParse(localStorage.getItem(LEGACY_SAVE_KEY), {});
+    const profile = isObj(parsed.profile) ? parsed.profile : {};
+    const name = String(profile.name || "").trim();
+    if (!name) return "Guest";
+    return name;
+  } catch {
+    return "Guest";
+  }
+}
+
 export default function HangarPage() {
   const router = useRouter();
   const [ready, setReady] = useState(false);
@@ -254,6 +273,14 @@ export default function HangarPage() {
   const [ownedShips, setOwnedShips] = useState(["scout"]);
   const [selectedShip, setSelectedShip] = useState("scout");
   const [upgrades, setUpgrades] = useState(makeUpgradeMap);
+  const [account, setAccount] = useState({
+    checked: false,
+    signedIn: false,
+    name: "Guest",
+    email: "",
+    photoUrl: "",
+    initial: "G",
+  });
   const toastTimerRef = useRef(null);
 
   useEffect(() => {
@@ -279,6 +306,75 @@ export default function HangarPage() {
 
   useEffect(() => () => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let canceled = false;
+    let unsubscribe = null;
+    let pollTimer = null;
+    const startedAt = Date.now();
+
+    const setGuest = () => {
+      const guestName = readGuestProfileName();
+      if (canceled) return;
+      setAccount({
+        checked: true,
+        signedIn: false,
+        name: guestName,
+        email: "",
+        photoUrl: "",
+        initial: accountInitial(guestName, ""),
+      });
+    };
+
+    const bindAuth = () => {
+      const fb = window.firebase;
+      const cfg = window.FIREBASE_CONFIG;
+      if (!fb || !cfg) return false;
+      try {
+        if (!fb.apps || fb.apps.length === 0) fb.initializeApp(cfg);
+        const auth = fb.auth();
+        unsubscribe = auth.onAuthStateChanged((user) => {
+          if (canceled) return;
+          if (!user) {
+            setGuest();
+            return;
+          }
+          const name = String(user.displayName || "Pilot").trim() || "Pilot";
+          const email = String(user.email || "").trim();
+          setAccount({
+            checked: true,
+            signedIn: true,
+            name,
+            email,
+            photoUrl: String(user.photoURL || "").trim(),
+            initial: accountInitial(name, email),
+          });
+        });
+        return true;
+      } catch {
+        setGuest();
+        return true;
+      }
+    };
+
+    const poll = () => {
+      if (bindAuth()) return;
+      if (Date.now() - startedAt > 6000) {
+        setGuest();
+        return;
+      }
+      pollTimer = setTimeout(poll, 250);
+    };
+
+    poll();
+
+    return () => {
+      canceled = true;
+      if (pollTimer) clearTimeout(pollTimer);
+      if (typeof unsubscribe === "function") unsubscribe();
+    };
   }, []);
 
   const showToast = useCallback((text) => {
@@ -358,6 +454,9 @@ export default function HangarPage() {
         <title>Stellar Siege Hangar</title>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
       </Head>
+      <Script src="/game/firebase-config.js" strategy="afterInteractive" />
+      <Script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js" strategy="afterInteractive" />
+      <Script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js" strategy="afterInteractive" />
 
       <main className="hangarPage">
         <header className="topBar">
@@ -374,6 +473,26 @@ export default function HangarPage() {
               <strong>{formatNum(crystals)}</strong>
             </div>
           </div>
+          <button
+            className={`accountBadge ${account.signedIn ? "accountBadgeSigned" : ""}`}
+            type="button"
+            title={account.signedIn ? `Signed in as ${account.name}` : "Guest mode (local save only)"}
+            onClick={() => window.location.assign("/game/index.html")}
+          >
+            <span className={`accountDot ${account.signedIn ? "accountDotOn" : ""}`} />
+            <span className="accountAvatar">
+              {account.photoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={account.photoUrl} alt="" />
+              ) : (
+                <span>{account.initial}</span>
+              )}
+            </span>
+            <span className="accountText">
+              <strong>{account.signedIn ? "Signed In" : account.checked ? "Guest" : "Checking..."}</strong>
+              <span>{account.signedIn ? account.name : "Local Progress"}</span>
+            </span>
+          </button>
         </header>
 
         <section className="section">
@@ -478,7 +597,7 @@ export default function HangarPage() {
           top: 0;
           z-index: 10;
           display: grid;
-          grid-template-columns: auto 1fr;
+          grid-template-columns: auto 1fr auto;
           gap: 10px;
           align-items: center;
           margin-bottom: 10px;
@@ -502,6 +621,67 @@ export default function HangarPage() {
           display: grid;
           grid-template-columns: 1fr 1fr;
           gap: 8px;
+        }
+        .accountBadge {
+          min-height: 52px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          border: 1px solid rgba(133, 170, 234, 0.42);
+          border-radius: 12px;
+          background: rgba(8, 24, 56, 0.9);
+          color: #eaf2ff;
+          padding: 6px 8px;
+          text-align: left;
+        }
+        .accountBadgeSigned {
+          border-color: rgba(103, 255, 206, 0.58);
+          box-shadow: 0 0 0 1px rgba(103, 255, 206, 0.2);
+        }
+        .accountDot {
+          width: 8px;
+          height: 8px;
+          border-radius: 999px;
+          background: #8ea0c2;
+          flex: 0 0 auto;
+        }
+        .accountDotOn {
+          background: #3ef6b4;
+        }
+        .accountAvatar {
+          width: 34px;
+          height: 34px;
+          border-radius: 999px;
+          border: 1px solid rgba(179, 204, 246, 0.5);
+          display: grid;
+          place-items: center;
+          overflow: hidden;
+          background: linear-gradient(135deg, #1f3f7d, #2b7aa8);
+          font-weight: 800;
+          font-size: 14px;
+          flex: 0 0 auto;
+        }
+        .accountAvatar img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          display: block;
+        }
+        .accountText {
+          display: grid;
+          min-width: 0;
+        }
+        .accountText strong {
+          font-size: 12px;
+          line-height: 1.1;
+        }
+        .accountText span {
+          font-size: 11px;
+          opacity: 0.78;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          max-width: 116px;
         }
         .walletCard {
           border: 1px solid rgba(137, 177, 255, 0.26);
@@ -643,6 +823,29 @@ export default function HangarPage() {
           .upgradeRow {
             grid-template-columns: 1fr 260px;
             align-items: center;
+          }
+          .accountText span {
+            max-width: 180px;
+          }
+        }
+        @media (max-width: 560px) {
+          .topBar {
+            grid-template-columns: auto 1fr;
+            grid-template-areas:
+              "back account"
+              "wallet wallet";
+          }
+          .backBtn {
+            grid-area: back;
+          }
+          .wallet {
+            grid-area: wallet;
+          }
+          .accountBadge {
+            grid-area: account;
+            justify-self: end;
+            min-width: 0;
+            max-width: 100%;
           }
         }
       `}</style>
