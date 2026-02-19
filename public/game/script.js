@@ -5483,18 +5483,30 @@ function gameLoop(ts) {
 }
 
 // Initial UI state + background animation
-initAnalytics();
-cloudInit();
-updateTopBar();
-ensureMissionSet();
-renderMissionBoard();
-setState(STATE.MENU);
-updateHud();
-updateRotateOverlay();
-updateTouchControlsVisibility();
-if (!fullscreenCleanup) fullscreenCleanup = setupFullscreenToggle({ element: document.documentElement });
-setFullscreenButtonLabel();
-updateFullscreenButtonVisibility();
+let appInitialized = false;
+
+function initializeAppState() {
+  if (appInitialized) return;
+  appInitialized = true;
+  try {
+    initAnalytics();
+    cloudInit();
+    updateTopBar();
+    ensureMissionSet();
+    renderMissionBoard();
+    setState(STATE.MENU);
+    updateHud();
+    updateRotateOverlay();
+    updateTouchControlsVisibility();
+    if (!fullscreenCleanup) fullscreenCleanup = setupFullscreenToggle({ element: document.documentElement });
+    setFullscreenButtonLabel();
+    updateFullscreenButtonVisibility();
+  } catch (err) {
+    console.error("[BOOT] initializeAppState failed", err);
+    bootLoaderTextEl.textContent = "Initialization issue detected. You can still start.";
+    bootStartBtn.disabled = false;
+  }
+}
 
 if (menuFullscreenBtn) {
   menuFullscreenBtn.addEventListener("click", () => toggleFullscreen(document.documentElement));
@@ -5679,9 +5691,16 @@ async function applyInitialRouteIntent() {
 }
 
 async function runInitialRoute() {
-  await applyInitialRouteIntent();
-  routeBooting = false;
-  syncRouteWithState(state);
+  initializeAppState();
+  try {
+    await applyInitialRouteIntent();
+  } catch (err) {
+    console.error("[BOOT] route intent failed", err);
+    setState(STATE.MENU);
+  } finally {
+    routeBooting = false;
+    syncRouteWithState(state);
+  }
 }
 
 function updateBootProgress(value, label) {
@@ -5691,17 +5710,22 @@ function updateBootProgress(value, label) {
 }
 
 async function prepareBoot() {
-  updateBootProgress(18, "Loading interface...");
-  await delay(120);
-  updateBootProgress(42, "Calibrating controls...");
-  await delay(120);
-  updateBootProgress(68, "Linking mission data...");
-  await delay(130);
-  updateBootProgress(86, "Systems online...");
-  await delay(120);
-  updateBootProgress(100, "Ready.");
-  bootStartBtn.disabled = false;
-  BOOT.complete = true;
+  try {
+    bootStartBtn.disabled = false;
+    updateBootProgress(22, "Loading interface...");
+    await delay(90);
+    updateBootProgress(56, "Calibrating controls...");
+    await delay(90);
+    updateBootProgress(82, "Linking mission data...");
+    await delay(90);
+    updateBootProgress(100, "Ready. Tap Start Mission");
+    BOOT.complete = true;
+  } catch (err) {
+    console.error("[BOOT] prepare failed", err);
+    updateBootProgress(100, "Ready. Tap Start Mission");
+    bootStartBtn.disabled = false;
+    BOOT.complete = true;
+  }
 }
 
 async function beginPlayFromBoot() {
@@ -5724,6 +5748,14 @@ bootStartBtn.addEventListener("click", () => {
     BOOT.started = false;
   });
 });
+
+// Fail-safe: never leave the player stuck on the loader.
+setTimeout(() => {
+  if (BOOT.complete) return;
+  updateBootProgress(100, "Ready. Tap Start Mission");
+  bootStartBtn.disabled = false;
+  BOOT.complete = true;
+}, 1200);
 
 void prepareBoot();
 
