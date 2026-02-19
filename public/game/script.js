@@ -398,6 +398,30 @@ function updateTouchControlsVisibility() {
   touchControlsEl.classList.toggle("hidden", !show);
   if (!show && touchAutoLockBtn) touchAutoLockBtn.classList.add("hidden");
   updateAutoLockButtonUi();
+  applyPhoneHangarPolicy();
+}
+
+function isPhoneHangarDisabled() {
+  return shouldUseTouchControls();
+}
+
+function applyPhoneHangarPolicy() {
+  const hideHangar = isPhoneHangarDisabled();
+  document.body.classList.toggle("phone-no-hangar", hideHangar);
+
+  if (hangarBtn) {
+    hangarBtn.classList.toggle("hidden", hideHangar);
+    hangarBtn.disabled = hideHangar;
+    hangarBtn.title = hideHangar ? "Hangar is available on desktop." : "";
+  }
+  if (menuHangarBtn) {
+    menuHangarBtn.classList.toggle("hidden", hideHangar);
+    menuHangarBtn.disabled = hideHangar;
+    menuHangarBtn.title = hideHangar ? "Hangar is available on desktop." : "";
+  }
+  if (hideHangar && state === STATE.HANGAR) {
+    setState(STATE.MENU);
+  }
 }
 
 function normalizePath(pathname) {
@@ -535,6 +559,9 @@ function showFullscreenHint() {
 }
 
 function setState(next) {
+  if (next === STATE.HANGAR && isPhoneHangarDisabled()) {
+    next = STATE.MENU;
+  }
   state = next;
   document.body.setAttribute("data-state", next);
   document.body.classList.toggle("hangar-open", next === STATE.HANGAR);
@@ -695,6 +722,7 @@ function resizeCanvas() {
 window.addEventListener("resize", resizeCanvas);
 window.addEventListener("resize", updateFullscreenButtonVisibility);
 window.addEventListener("resize", updateRotateOverlay);
+window.addEventListener("resize", applyPhoneHangarPolicy);
 resizeCanvas();
 
 const TAU = Math.PI * 2;
@@ -2026,6 +2054,10 @@ playCampaignBtn.addEventListener("click", () => {
   setState(STATE.CAMPAIGN);
 });
 hangarBtn.addEventListener("click", async () => {
+  if (isPhoneHangarDisabled()) {
+    showToast("Hangar is desktop-only right now.");
+    return;
+  }
   await waitForAuthRestore();
   renderHangar();
   setState(STATE.HANGAR);
@@ -2239,6 +2271,10 @@ menuCampaignBtn.addEventListener("click", () => {
 
 menuHangarBtn.addEventListener("click", async () => {
   setMenuOpen(false);
+  if (isPhoneHangarDisabled()) {
+    showToast("Hangar is desktop-only right now.");
+    return;
+  }
   await waitForAuthRestore();
   renderHangar();
   setState(STATE.HANGAR);
@@ -2631,6 +2667,7 @@ function renderHangarRewardedActions() {
 }
 
 function renderHangar() {
+  if (isPhoneHangarDisabled()) return;
   cloudInit();
   if (!unlockFxTimer) unlockFxEl.classList.add("hidden");
 
@@ -6254,6 +6291,10 @@ async function applyInitialRouteIntent() {
   }
 
   if (path === "/game/hangar") {
+    if (isPhoneHangarDisabled()) {
+      setState(STATE.MENU);
+      return;
+    }
     await waitForAuthRestore();
     renderHangar();
     setState(STATE.HANGAR);
