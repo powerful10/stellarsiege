@@ -1,6 +1,37 @@
 import Head from "next/head";
+import { useCallback, useEffect, useState } from "react";
 
 export default function Home() {
+  const [isMobileDevice, setIsMobileDevice] = useState(false);
+  const [fullscreenSupported, setFullscreenSupported] = useState(false);
+  const [fullscreenActive, setFullscreenActive] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const coarse = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
+    setIsMobileDevice(Boolean(coarse));
+    setFullscreenSupported(Boolean(document.fullscreenEnabled && document.documentElement.requestFullscreen));
+
+    const onFullscreenChange = () => setFullscreenActive(Boolean(document.fullscreenElement));
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    onFullscreenChange();
+    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
+  }, []);
+
+  const toggleFullscreen = useCallback(async () => {
+    if (typeof document === "undefined") return;
+    if (!document.fullscreenEnabled || !document.documentElement.requestFullscreen) return;
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+      } else {
+        await document.documentElement.requestFullscreen();
+      }
+    } catch {
+      // ignore browser fullscreen restrictions
+    }
+  }, []);
+
   return (
     <>
       <Head>
@@ -26,6 +57,22 @@ export default function Home() {
             Fight escalating waves, build your ship with permanent upgrades, and switch between Survival, Campaign, and
             Online Duel without installing any app.
           </p>
+          {isMobileDevice ? (
+            <div className="fsPrompt">
+              <div>
+                <strong>Recommended on mobile: Fullscreen mode</strong>
+                <span>Better controls, better visibility, fewer accidental browser gestures.</span>
+              </div>
+              <button
+                className="fsPromptBtn"
+                type="button"
+                onClick={toggleFullscreen}
+                disabled={!fullscreenSupported}
+              >
+                {fullscreenActive ? "Exit Fullscreen" : fullscreenSupported ? "Enter Fullscreen" : "Unavailable"}
+              </button>
+            </div>
+          ) : null}
           <div className="actions">
             <a className="btn btnPrimary" href="/game/survival/start">
               Play Survival
@@ -160,6 +207,40 @@ export default function Home() {
           flex-wrap: wrap;
           margin-top: 16px;
         }
+        .fsPrompt {
+          margin-top: 14px;
+          display: grid;
+          grid-template-columns: 1fr auto;
+          gap: 10px;
+          align-items: center;
+          padding: 10px 12px;
+          border: 1px solid #2e5aa4;
+          border-radius: 12px;
+          background: rgba(15, 30, 62, 0.88);
+        }
+        .fsPrompt strong {
+          display: block;
+          font-size: 14px;
+          margin-bottom: 3px;
+        }
+        .fsPrompt span {
+          display: block;
+          font-size: 12px;
+          color: #b7c8e8;
+        }
+        .fsPromptBtn {
+          min-height: 44px;
+          min-width: 150px;
+          border: 1px solid #4f82d9;
+          border-radius: 10px;
+          color: #eaf3ff;
+          background: linear-gradient(135deg, #255fbe, #2a7be0);
+          font-weight: 800;
+          font-size: 14px;
+        }
+        .fsPromptBtn:disabled {
+          opacity: 0.5;
+        }
         .btn {
           display: inline-block;
           padding: 10px 14px;
@@ -211,6 +292,14 @@ export default function Home() {
         .footer a {
           color: #91c3ff;
           text-decoration: none;
+        }
+        @media (max-width: 640px) {
+          .fsPrompt {
+            grid-template-columns: 1fr;
+          }
+          .fsPromptBtn {
+            width: 100%;
+          }
         }
       `}</style>
     </>

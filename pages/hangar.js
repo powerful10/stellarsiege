@@ -281,6 +281,9 @@ export default function HangarPage() {
     photoUrl: "",
     initial: "G",
   });
+  const [isMobileDevice, setIsMobileDevice] = useState(false);
+  const [fullscreenSupported, setFullscreenSupported] = useState(false);
+  const [fullscreenActive, setFullscreenActive] = useState(false);
   const toastTimerRef = useRef(null);
 
   useEffect(() => {
@@ -377,11 +380,51 @@ export default function HangarPage() {
     };
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const coarse = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
+    setIsMobileDevice(Boolean(coarse));
+    setFullscreenSupported(Boolean(document.fullscreenEnabled && document.documentElement.requestFullscreen));
+
+    const onFullscreenChange = () => {
+      setFullscreenActive(Boolean(document.fullscreenElement));
+    };
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    onFullscreenChange();
+    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
+  }, []);
+
   const showToast = useCallback((text) => {
     setToast(text);
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     toastTimerRef.current = setTimeout(() => setToast(""), 1800);
   }, []);
+
+  const toggleFullscreen = useCallback(async () => {
+    if (typeof document === "undefined") return;
+    if (!document.fullscreenEnabled || !document.documentElement.requestFullscreen) {
+      showToast("Fullscreen is unavailable in this browser.");
+      return;
+    }
+
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+        return;
+      }
+
+      await document.documentElement.requestFullscreen();
+      if (isMobileDevice && screen.orientation && screen.orientation.lock) {
+        try {
+          await screen.orientation.lock("landscape");
+        } catch {
+          // ignore orientation lock errors
+        }
+      }
+    } catch {
+      showToast("Fullscreen request blocked. Tap again.");
+    }
+  }, [showToast, isMobileDevice]);
 
   const selected = SHIP_LOOKUP[selectedShip] || SHIPS[0];
   const selectedOwned = ownedShips.includes(selected.id);
@@ -463,6 +506,15 @@ export default function HangarPage() {
           <button className="backBtn" type="button" onClick={goBack}>
             Back
           </button>
+          <button
+            className="fsBtn"
+            type="button"
+            onClick={toggleFullscreen}
+            title="Toggle fullscreen"
+            disabled={!fullscreenSupported}
+          >
+            {fullscreenActive ? "Exit Fullscreen" : "Fullscreen"}
+          </button>
           <div className="wallet">
             <div className="walletCard">
               <span>Credits</span>
@@ -497,7 +549,11 @@ export default function HangarPage() {
 
         <section className="section">
           <h1>Hangar</h1>
-          <p>Guest mode is active. Progress saves locally on this device.</p>
+          <p>
+            {isMobileDevice
+              ? "Mobile tip: fullscreen is recommended for better visibility and controls."
+              : "Guest mode is active. Progress saves locally on this device."}
+          </p>
         </section>
 
         <section className="section">
@@ -597,7 +653,7 @@ export default function HangarPage() {
           top: 0;
           z-index: 10;
           display: grid;
-          grid-template-columns: auto 1fr auto;
+          grid-template-columns: auto auto 1fr auto;
           gap: 10px;
           align-items: center;
           margin-bottom: 10px;
@@ -616,6 +672,19 @@ export default function HangarPage() {
           color: #f3f8ff;
           font-size: 16px;
           font-weight: 800;
+        }
+        .fsBtn {
+          min-height: 52px;
+          min-width: 124px;
+          border: 1px solid rgba(126, 214, 255, 0.56);
+          border-radius: 12px;
+          background: rgba(14, 44, 100, 0.95);
+          color: #eaf4ff;
+          font-size: 15px;
+          font-weight: 800;
+        }
+        .fsBtn:disabled {
+          opacity: 0.5;
         }
         .wallet {
           display: grid;
@@ -830,13 +899,17 @@ export default function HangarPage() {
         }
         @media (max-width: 560px) {
           .topBar {
-            grid-template-columns: auto 1fr;
+            grid-template-columns: auto auto 1fr;
             grid-template-areas:
-              "back account"
-              "wallet wallet";
+              "back fs account"
+              "wallet wallet wallet";
           }
           .backBtn {
             grid-area: back;
+          }
+          .fsBtn {
+            grid-area: fs;
+            min-width: 98px;
           }
           .wallet {
             grid-area: wallet;
