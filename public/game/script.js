@@ -402,25 +402,21 @@ function updateTouchControlsVisibility() {
 }
 
 function isPhoneHangarDisabled() {
-  return shouldUseTouchControls();
+  return false;
 }
 
 function applyPhoneHangarPolicy() {
-  const hideHangar = isPhoneHangarDisabled();
-  document.body.classList.toggle("phone-no-hangar", hideHangar);
+  document.body.classList.remove("phone-no-hangar");
 
   if (hangarBtn) {
-    hangarBtn.classList.toggle("hidden", hideHangar);
-    hangarBtn.disabled = hideHangar;
-    hangarBtn.title = hideHangar ? "Hangar is available on desktop." : "";
+    hangarBtn.classList.remove("hidden");
+    hangarBtn.disabled = false;
+    hangarBtn.title = "";
   }
   if (menuHangarBtn) {
-    menuHangarBtn.classList.toggle("hidden", hideHangar);
-    menuHangarBtn.disabled = hideHangar;
-    menuHangarBtn.title = hideHangar ? "Hangar is available on desktop." : "";
-  }
-  if (hideHangar && state === STATE.HANGAR) {
-    setState(STATE.MENU);
+    menuHangarBtn.classList.remove("hidden");
+    menuHangarBtn.disabled = false;
+    menuHangarBtn.title = "";
   }
 }
 
@@ -458,7 +454,7 @@ function routeForRunState() {
 function routeForUiState(next) {
   if (next === STATE.MENU) return "/game/index.html";
   // Keep menu overlays on one stable URL to avoid mobile deep-link traps/cache confusion.
-  if (next === STATE.HANGAR) return "/game/index.html";
+  if (next === STATE.HANGAR) return "/hangar";
   if (next === STATE.LEADERBOARD) return "/game/index.html";
   if (next === STATE.CAMPAIGN) return "/game/index.html";
   if (next === STATE.ONLINE) return "/game/index.html";
@@ -559,8 +555,9 @@ function showFullscreenHint() {
 }
 
 function setState(next) {
-  if (next === STATE.HANGAR && isPhoneHangarDisabled()) {
-    next = STATE.MENU;
+  if (next === STATE.HANGAR) {
+    openHangarPage();
+    return;
   }
   state = next;
   document.body.setAttribute("data-state", next);
@@ -2053,14 +2050,14 @@ playCampaignBtn.addEventListener("click", () => {
   renderCampaignMissions();
   setState(STATE.CAMPAIGN);
 });
-hangarBtn.addEventListener("click", async () => {
-  if (isPhoneHangarDisabled()) {
-    showToast("Hangar is desktop-only right now.");
-    return;
-  }
-  await waitForAuthRestore();
-  renderHangar();
-  setState(STATE.HANGAR);
+
+function openHangarPage() {
+  const search = buildModeSearch();
+  window.location.href = `/hangar${search}`;
+}
+
+hangarBtn.addEventListener("click", () => {
+  openHangarPage();
 });
 leaderboardBtn.addEventListener("click", () => {
   renderLeaderboard("local");
@@ -2269,15 +2266,9 @@ menuCampaignBtn.addEventListener("click", () => {
   setState(STATE.CAMPAIGN);
 });
 
-menuHangarBtn.addEventListener("click", async () => {
+menuHangarBtn.addEventListener("click", () => {
   setMenuOpen(false);
-  if (isPhoneHangarDisabled()) {
-    showToast("Hangar is desktop-only right now.");
-    return;
-  }
-  await waitForAuthRestore();
-  renderHangar();
-  setState(STATE.HANGAR);
+  openHangarPage();
 });
 
 menuLeaderboardBtn.addEventListener("click", () => {
@@ -6291,13 +6282,7 @@ async function applyInitialRouteIntent() {
   }
 
   if (path === "/game/hangar") {
-    if (isPhoneHangarDisabled()) {
-      setState(STATE.MENU);
-      return;
-    }
-    await waitForAuthRestore();
-    renderHangar();
-    setState(STATE.HANGAR);
+    openHangarPage();
     return;
   }
 

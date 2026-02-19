@@ -36,7 +36,7 @@ export default function Home() {
             <a className="btn" href="/game/onlinematch/start">
               Open Online
             </a>
-            <a className="btn" href="/game/hangar">
+            <a className="btn" href="/hangar">
               Open Hangar
             </a>
             <a className="btn" href="/game/index.html">
@@ -111,7 +111,7 @@ export default function Home() {
           <a href="/game/survival/start">Play</a>
           <a href="/game/campaign/start">Campaign</a>
           <a href="/game/onlinematch/start">Online</a>
-          <a href="/game/hangar">Hangar</a>
+          <a href="/hangar">Hangar</a>
           <a href="/game/info.html">Guide</a>
           <a href="/privacy.html">Privacy</a>
           <a href="/terms.html">Terms</a>
