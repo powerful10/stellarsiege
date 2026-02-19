@@ -10,6 +10,8 @@
 console.log("[Stellar Siege] boot");
 
 const $ = (id) => document.getElementById(id);
+const QUERY = new URLSearchParams(window.location.search);
+const PORTAL_MODE = QUERY.get("portal") === "1";
 
 function isTouchDevice() {
   return window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
@@ -302,8 +304,6 @@ const canvas = must("game");
 const ctx = canvas.getContext("2d");
 
 let WORLD = { width: 960, height: 600 };
-const QUERY = new URLSearchParams(window.location.search);
-const PORTAL_MODE = QUERY.get("portal") === "1";
 
 const BOOT = {
   complete: false,
