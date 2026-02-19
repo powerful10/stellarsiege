@@ -21,7 +21,6 @@ export async function getServerSideProps({ req, res }) {
   const urls = [
     buildUrl(`${origin}/`, "daily", "1.0"),
     buildUrl(`${origin}/game/index.html`, "daily", "1.0"),
-    buildUrl(`${origin}/hangar`, "daily", "0.9"),
     buildUrl(`${origin}/game/info.html`, "weekly", "0.8"),
     buildUrl(`${origin}/privacy.html`, "monthly", "0.5"),
     buildUrl(`${origin}/terms.html`, "monthly", "0.5"),

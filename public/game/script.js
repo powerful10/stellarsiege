@@ -454,7 +454,7 @@ function routeForRunState() {
 function routeForUiState(next) {
   if (next === STATE.MENU) return "/game/index.html";
   // Keep menu overlays on one stable URL to avoid mobile deep-link traps/cache confusion.
-  if (next === STATE.HANGAR) return "/hangar";
+  if (next === STATE.HANGAR) return "/game/index.html";
   if (next === STATE.LEADERBOARD) return "/game/index.html";
   if (next === STATE.CAMPAIGN) return "/game/index.html";
   if (next === STATE.ONLINE) return "/game/index.html";
@@ -555,10 +555,6 @@ function showFullscreenHint() {
 }
 
 function setState(next) {
-  if (next === STATE.HANGAR) {
-    openHangarPage();
-    return;
-  }
   state = next;
   document.body.setAttribute("data-state", next);
   document.body.classList.toggle("hangar-open", next === STATE.HANGAR);
@@ -2050,14 +2046,10 @@ playCampaignBtn.addEventListener("click", () => {
   renderCampaignMissions();
   setState(STATE.CAMPAIGN);
 });
-
-function openHangarPage() {
-  const search = buildModeSearch();
-  window.location.href = `/hangar${search}`;
-}
-
-hangarBtn.addEventListener("click", () => {
-  openHangarPage();
+hangarBtn.addEventListener("click", async () => {
+  await waitForAuthRestore();
+  renderHangar();
+  setState(STATE.HANGAR);
 });
 leaderboardBtn.addEventListener("click", () => {
   renderLeaderboard("local");
@@ -2266,9 +2258,11 @@ menuCampaignBtn.addEventListener("click", () => {
   setState(STATE.CAMPAIGN);
 });
 
-menuHangarBtn.addEventListener("click", () => {
+menuHangarBtn.addEventListener("click", async () => {
   setMenuOpen(false);
-  openHangarPage();
+  await waitForAuthRestore();
+  renderHangar();
+  setState(STATE.HANGAR);
 });
 
 menuLeaderboardBtn.addEventListener("click", () => {
@@ -6282,7 +6276,9 @@ async function applyInitialRouteIntent() {
   }
 
   if (path === "/game/hangar") {
-    openHangarPage();
+    await waitForAuthRestore();
+    renderHangar();
+    setState(STATE.HANGAR);
     return;
   }
 

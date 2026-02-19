@@ -3,8 +3,8 @@ const nextConfig = {
   async redirects() {
     return [
       {
-        source: "/game/hangar",
-        destination: "/hangar",
+        source: "/hangar",
+        destination: "/game/index.html",
         permanent: false,
       },
     ];
@@ -17,6 +17,7 @@ const nextConfig = {
       { source: "/game/campaign/start/:level", destination: "/game/index.html" },
       { source: "/game/onlinematch", destination: "/game/index.html" },
       { source: "/game/onlinematch/start", destination: "/game/index.html" },
+      { source: "/game/hangar", destination: "/game/index.html" },
       { source: "/game/leaderboard", destination: "/game/index.html" },
       { source: "/game/account", destination: "/game/index.html" },
     ];
