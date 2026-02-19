@@ -187,6 +187,7 @@ const infoBtn = must("infoBtn");
 // Hangar UI
 const pilotPillEl = must("pilotPill");
 const backFromHangarBtn = must("backFromHangarBtn");
+const hangarHomeBtn = must("hangarHomeBtn");
 const statsBoxEl = must("statsBox");
 const shipPickerEl = must("shipPicker");
 const upgradeListEl = must("upgradeList");
@@ -263,6 +264,10 @@ const menuOnlineBtn = must("menuOnlineBtn");
 const sideFullscreenBtn = must("sideFullscreenBtn");
 const sideInfoBtn = must("sideInfoBtn");
 const menuResetBtn = must("menuResetBtn");
+const tapAssistToggle = must("tapAssistToggle");
+const stickyLockToggle = must("stickyLockToggle");
+const aimAssistStrengthEl = must("aimAssistStrength");
+const aimAssistStrengthValueEl = must("aimAssistStrengthValue");
 
 // Top-right auth UI
 const topSignInBtn = must("topSignInBtn");
@@ -280,6 +285,7 @@ if (PORTAL_MODE) {
 
 // Touch controls
 const touchShootBtn = must("touchShoot");
+const touchAutoLockBtn = must("touchAutoLockBtn");
 const joystickBaseEl = must("joyBase");
 const joystickStickEl = must("joyStick");
 const touchControlsEl = document.querySelector(".touchControls");
@@ -390,6 +396,8 @@ function updateTouchControlsVisibility() {
     (activeMode === MODE.SURVIVAL || activeMode === MODE.CAMPAIGN || activeMode === MODE.DUEL);
   touchControlsEl.classList.toggle("touchControls--active", show);
   touchControlsEl.classList.toggle("hidden", !show);
+  if (!show && touchAutoLockBtn) touchAutoLockBtn.classList.add("hidden");
+  updateAutoLockButtonUi();
 }
 
 function normalizePath(pathname) {
@@ -692,6 +700,78 @@ const TAU = Math.PI * 2;
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const lerp = (a, b, t) => a + (b - a) * t;
 const rand = (a, b) => a + Math.random() * (b - a);
+const AIM_TARGETING =
+  window.AimTargeting && typeof window.AimTargeting.selectTargetFromTap === "function"
+    ? window.AimTargeting
+    : {
+        selectTargetFromTap(tapPoint, enemies, radius) {
+          if (!tapPoint || !Array.isArray(enemies)) return null;
+          const r = Math.max(8, Number(radius) || 0);
+          let best = null;
+          let bestDist = Infinity;
+          enemies.forEach((enemy) => {
+            if (!enemy || Number(enemy.hp || 0) <= 0) return;
+            const dx = Number(enemy.x || 0) - Number(tapPoint.x || 0);
+            const dy = Number(enemy.y || 0) - Number(tapPoint.y || 0);
+            const dist = Math.hypot(dx, dy);
+            if (dist <= r && dist < bestDist) {
+              best = enemy;
+              bestDist = dist;
+            }
+          });
+          return best;
+        },
+        updateAimTowardsTarget(currentAim, targetPos, smoothing) {
+          if (!currentAim || !targetPos) return Number(currentAim && currentAim.angle) || 0;
+          const desired = Math.atan2(
+            Number(targetPos.y || 0) - Number(currentAim.y || 0),
+            Number(targetPos.x || 0) - Number(currentAim.x || 0)
+          );
+          const alpha = clamp(Number(smoothing) || 0, 0, 1);
+          let delta = desired - Number(currentAim.angle || 0);
+          while (delta > Math.PI) delta -= TAU;
+          while (delta < -Math.PI) delta += TAU;
+          return Number(currentAim.angle || 0) + delta * alpha;
+        },
+        findNextTarget(enemies, playerPos, aimDir, coneAngle, maxRange) {
+          if (!Array.isArray(enemies) || !playerPos || !aimDir) return null;
+          const range = Math.max(24, Number(maxRange) || 0);
+          const halfCone = Math.max(0.01, Number(coneAngle) || 0) * 0.5;
+          let best = null;
+          let bestDist = Infinity;
+          enemies.forEach((enemy) => {
+            if (!enemy || Number(enemy.hp || 0) <= 0) return;
+            const dx = Number(enemy.x || 0) - Number(playerPos.x || 0);
+            const dy = Number(enemy.y || 0) - Number(playerPos.y || 0);
+            const dist = Math.hypot(dx, dy);
+            if (!dist || dist > range) return;
+            const nx = dx / dist;
+            const ny = dy / dist;
+            const dot = clamp(nx * Number(aimDir.x || 0) + ny * Number(aimDir.y || 0), -1, 1);
+            if (Math.acos(dot) > halfCone) return;
+            if (dist < bestDist) {
+              best = enemy;
+              bestDist = dist;
+            }
+          });
+          return best;
+        },
+      };
+
+const AIM_TUNING = {
+  tapAssistScaleMin: 0.04,
+  tapAssistScaleMax: 0.06,
+  stickyDurationPve: 5.2,
+  stickyDurationPvp: 2.4,
+  maxRangePve: 620,
+  maxRangePvp: 560,
+  autoDuration: 11,
+  autoCooldown: 16,
+  autoConeAngle: 1.9,
+  smoothingMin: 0.16,
+  smoothingMax: 0.56,
+  autoDamagePenalty: 0.95,
+};
 
 const input = {
   up: false,
@@ -721,6 +801,156 @@ function worldFromEvent(event) {
   const x = ((event.clientX - rect.left) / rect.width) * WORLD.width;
   const y = ((event.clientY - rect.top) / rect.height) * WORLD.height;
   return { x: clamp(x, 0, WORLD.width), y: clamp(y, 0, WORLD.height) };
+}
+
+function aimStrengthNorm() {
+  return clamp(Number(SAVE.profile.aimAssistStrength || 0) / 100, 0, 1);
+}
+
+function tapAssistEnabled() {
+  return Boolean(SAVE.profile.aimTapAssistEnabled);
+}
+
+function stickyLockEnabled() {
+  return Boolean(SAVE.profile.aimStickyLockEnabled);
+}
+
+function applyAimAssistSettingsUI() {
+  tapAssistToggle.checked = tapAssistEnabled();
+  stickyLockToggle.checked = stickyLockEnabled();
+  const val = clamp(Math.floor(Number(SAVE.profile.aimAssistStrength || 0)), 0, 100);
+  aimAssistStrengthEl.value = String(val);
+  aimAssistStrengthValueEl.textContent = `${val}%`;
+}
+
+function aimTapRadius() {
+  const scale = lerp(AIM_TUNING.tapAssistScaleMin, AIM_TUNING.tapAssistScaleMax, aimStrengthNorm());
+  const base = Math.min(WORLD.width, WORLD.height);
+  return clamp(base * scale, 22, 96);
+}
+
+function stickyDurationForMode() {
+  if (run.mode === MODE.SURVIVAL || run.mode === MODE.CAMPAIGN) return AIM_TUNING.stickyDurationPve;
+  return AIM_TUNING.stickyDurationPvp;
+}
+
+function stickyMaxRangeForMode() {
+  if (run.mode === MODE.SURVIVAL || run.mode === MODE.CAMPAIGN) return AIM_TUNING.maxRangePve;
+  return AIM_TUNING.maxRangePvp;
+}
+
+function isOnlinePvpMode() {
+  return Boolean(run.mode === MODE.DUEL && run.duel && run.duel.kind === "online");
+}
+
+function isAutoRelockMode() {
+  return run.mode === MODE.SURVIVAL || run.mode === MODE.CAMPAIGN;
+}
+
+function validAimEnemies() {
+  return entities.enemies.filter(
+    (enemy) =>
+      enemy &&
+      Number(enemy.hp || 0) > 0 &&
+      Number.isFinite(Number(enemy.x)) &&
+      Number.isFinite(Number(enemy.y))
+  );
+}
+
+function findAimTargetById(id) {
+  if (!id) return null;
+  return entities.enemies.find((enemy) => enemy && enemy.id === id && Number(enemy.hp || 0) > 0) || null;
+}
+
+function clearAimTarget() {
+  if (!run || !run.aim) return;
+  run.aim.targetId = "";
+  run.aim.lockUntil = 0;
+}
+
+function setAimTarget(enemy, { markSelected = true, refreshSticky = true } = {}) {
+  if (!enemy || !run || !run.aim) return false;
+  run.aim.targetId = String(enemy.id || "");
+  if (refreshSticky) run.aim.lockUntil = run.time + stickyDurationForMode();
+  if (markSelected) run.aim.selectedOnce = true;
+  return true;
+}
+
+function selectAimTargetFromTap(worldPoint) {
+  if (!run.active || state !== STATE.RUN) return false;
+  if (!tapAssistEnabled()) return false;
+  const target = AIM_TARGETING.selectTargetFromTap(worldPoint, validAimEnemies(), aimTapRadius());
+  if (!target) return false;
+  setAimTarget(target, { markSelected: true, refreshSticky: true });
+  input.mouseX = Number(target.x || worldPoint.x);
+  input.mouseY = Number(target.y || worldPoint.y);
+  return true;
+}
+
+function smoothAimFactor(dt) {
+  const base = lerp(AIM_TUNING.smoothingMin, AIM_TUNING.smoothingMax, aimStrengthNorm());
+  const frameScale = clamp((Number(dt) || 0) * 60, 0, 1.2);
+  return clamp(base * frameScale, 0.02, 0.95);
+}
+
+function isAutoRelockActive() {
+  return Boolean(isAutoRelockMode() && run.aim.selectedOnce && run.time < run.aim.autoActiveUntil);
+}
+
+function triggerAutoRelock() {
+  if (!run.active || state !== STATE.RUN) return;
+  if (!isAutoRelockMode() || isOnlinePvpMode()) return;
+  if (!stickyLockEnabled()) {
+    showToast("Enable Sticky Lock first.");
+    return;
+  }
+  if (!run.aim.selectedOnce) {
+    showToast("Tap an enemy once to arm Auto Lock.");
+    return;
+  }
+  if (run.time < run.aim.autoCooldownUntil) {
+    const left = Math.max(1, Math.ceil(run.aim.autoCooldownUntil - run.time));
+    showToast(`Auto Lock cooldown: ${left}s`);
+    return;
+  }
+  run.aim.autoActiveUntil = run.time + AIM_TUNING.autoDuration;
+  run.aim.autoCooldownUntil = run.time + AIM_TUNING.autoCooldown;
+  showToast("Auto Lock online.");
+}
+
+function updateAutoLockButtonUi() {
+  if (!touchAutoLockBtn) return;
+  const show = shouldUseTouchControls() && state === STATE.RUN && isAutoRelockMode() && !isOnlinePvpMode();
+  touchAutoLockBtn.classList.toggle("hidden", !show);
+  if (!show) return;
+
+  const activeRemaining = Math.max(0, run.aim.autoActiveUntil - run.time);
+  const cooldownRemaining = Math.max(0, run.aim.autoCooldownUntil - run.time);
+  const isActive = activeRemaining > 0;
+  const isCoolingDown = !isActive && cooldownRemaining > 0;
+
+  touchAutoLockBtn.classList.toggle("is-ready", !isActive && !isCoolingDown);
+  touchAutoLockBtn.classList.toggle("is-active", isActive);
+
+  if (isActive) {
+    touchAutoLockBtn.disabled = true;
+    touchAutoLockBtn.textContent = `AUTO\n${Math.ceil(activeRemaining)}s`;
+    const pct = clamp((activeRemaining / AIM_TUNING.autoDuration) * 100, 0, 100);
+    touchAutoLockBtn.style.setProperty("--assist-progress", String(pct));
+    return;
+  }
+
+  if (isCoolingDown) {
+    touchAutoLockBtn.disabled = true;
+    touchAutoLockBtn.textContent = `CD\n${Math.ceil(cooldownRemaining)}s`;
+    const pct = clamp((cooldownRemaining / AIM_TUNING.autoCooldown) * 100, 0, 100);
+    touchAutoLockBtn.style.setProperty("--assist-progress", String(pct));
+    return;
+  }
+
+  touchAutoLockBtn.disabled = false;
+  touchAutoLockBtn.textContent = "AUTO LOCK";
+  touchAutoLockBtn.style.setProperty("--assist-progress", "0");
 }
 
 window.addEventListener("keydown", (event) => {
@@ -762,6 +992,7 @@ canvas.addEventListener("mousedown", (event) => {
   const p = worldFromEvent(event);
   input.mouseX = p.x;
   input.mouseY = p.y;
+  selectAimTargetFromTap(p);
 });
 
 canvas.addEventListener("mouseup", () => {
@@ -785,6 +1016,15 @@ function bindTouchBtn(el, onDown, onUp) {
 }
 
 bindTouchBtn(touchShootBtn, () => (input.shooting = true), () => (input.shooting = false));
+touchAutoLockBtn.addEventListener(
+  "pointerdown",
+  (event) => {
+    event.preventDefault();
+    triggerAutoRelock();
+    updateAutoLockButtonUi();
+  },
+  { passive: false }
+);
 
 function setupJoystick() {
   if (!joystickBaseEl || !joystickStickEl) return;
@@ -856,6 +1096,7 @@ canvas.addEventListener(
     const p = worldFromEvent(t);
     input.mouseX = p.x;
     input.mouseY = p.y;
+    selectAimTargetFromTap(p);
     event.preventDefault();
   },
   { passive: false }
@@ -917,6 +1158,9 @@ function defaultSave() {
       dailyStreakDay: 0,
       missionDayKey: "",
       missionWeekKey: "",
+      aimTapAssistEnabled: shouldUseTouchControls(),
+      aimStickyLockEnabled: shouldUseTouchControls(),
+      aimAssistStrength: shouldUseTouchControls() ? 70 : 40,
       updatedAt: 0,
     },
     ships: {},
@@ -1324,6 +1568,12 @@ function migrateSave() {
   if (!Number.isFinite(Number(SAVE.profile.dailyStreakDay))) SAVE.profile.dailyStreakDay = 0;
   if (typeof SAVE.profile.missionDayKey !== "string") SAVE.profile.missionDayKey = "";
   if (typeof SAVE.profile.missionWeekKey !== "string") SAVE.profile.missionWeekKey = "";
+  if (typeof SAVE.profile.aimTapAssistEnabled !== "boolean") SAVE.profile.aimTapAssistEnabled = shouldUseTouchControls();
+  if (typeof SAVE.profile.aimStickyLockEnabled !== "boolean") SAVE.profile.aimStickyLockEnabled = shouldUseTouchControls();
+  if (!Number.isFinite(Number(SAVE.profile.aimAssistStrength))) {
+    SAVE.profile.aimAssistStrength = shouldUseTouchControls() ? 70 : 40;
+  }
+  SAVE.profile.aimAssistStrength = clamp(Math.floor(Number(SAVE.profile.aimAssistStrength || 0)), 0, 100);
   if (!SAVE.missions || typeof SAVE.missions !== "object") SAVE.missions = { daily: [], weekly: [] };
   if (!Array.isArray(SAVE.missions.daily)) SAVE.missions.daily = [];
   if (!Array.isArray(SAVE.missions.weekly)) SAVE.missions.weekly = [];
@@ -1331,6 +1581,7 @@ function migrateSave() {
 }
 
 migrateSave();
+applyAimAssistSettingsUI();
 
 const DAILY_REWARD_LADDER = [
   { day: 1, credits: 500, crystals: 0 },
@@ -1797,7 +2048,19 @@ infoBtn.addEventListener("click", () => {
   infoOverlayEl.classList.remove("hidden");
 });
 
-backFromHangarBtn.addEventListener("click", () => setState(STATE.MENU));
+function exitHangarToHome(event) {
+  if (event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+  setMenuOpen(false);
+  setState(STATE.MENU);
+}
+
+backFromHangarBtn.addEventListener("click", exitHangarToHome);
+backFromHangarBtn.addEventListener("pointerup", exitHangarToHome);
+hangarHomeBtn.addEventListener("click", exitHangarToHome);
+hangarHomeBtn.addEventListener("pointerup", exitHangarToHome);
 backFromLeaderboardBtn.addEventListener("click", () => setState(STATE.MENU));
 backFromCampaignBtn.addEventListener("click", () => setState(STATE.MENU));
 backFromOnlineBtn.addEventListener("click", () => setState(STATE.MENU));
@@ -2004,6 +2267,29 @@ menuResetBtn.addEventListener("click", () => {
     // ignore
   }
   window.location.reload();
+});
+
+tapAssistToggle.addEventListener("change", () => {
+  SAVE.profile.aimTapAssistEnabled = Boolean(tapAssistToggle.checked);
+  SAVE.profile.updatedAt = nowMs();
+  saveNow();
+  applyAimAssistSettingsUI();
+});
+
+stickyLockToggle.addEventListener("change", () => {
+  SAVE.profile.aimStickyLockEnabled = Boolean(stickyLockToggle.checked);
+  if (!SAVE.profile.aimStickyLockEnabled) clearAimTarget();
+  SAVE.profile.updatedAt = nowMs();
+  saveNow();
+  applyAimAssistSettingsUI();
+  updateAutoLockButtonUi();
+});
+
+aimAssistStrengthEl.addEventListener("input", () => {
+  SAVE.profile.aimAssistStrength = clamp(Math.floor(Number(aimAssistStrengthEl.value || 0)), 0, 100);
+  SAVE.profile.updatedAt = nowMs();
+  saveNow();
+  applyAimAssistSettingsUI();
 });
 
 // Online buttons (real online requires Firebase / server config)
@@ -2960,6 +3246,9 @@ function computeLocalSnapshot() {
     onlineGames: Number(SAVE.profile.onlineGames || 0),
     onlineWins: Number(SAVE.profile.onlineWins || 0),
     onlineLosses: Number(SAVE.profile.onlineLosses || 0),
+    aimTapAssistEnabled: Boolean(SAVE.profile.aimTapAssistEnabled),
+    aimStickyLockEnabled: Boolean(SAVE.profile.aimStickyLockEnabled),
+    aimAssistStrength: clamp(Math.floor(Number(SAVE.profile.aimAssistStrength || 0)), 0, 100),
     adRewardsDay: String(SAVE.profile.adRewardsDay || ""),
     adRewardsClaimed: Number(SAVE.profile.adRewardsClaimed || 0),
     adRewardLastAt: Number(SAVE.profile.adRewardLastAt || 0),
@@ -3018,6 +3307,7 @@ async function cloudPullMerge(options = {}) {
     SAVE.ships = mergeShips(preferRemote ? {} : SAVE.ships, remote.ships);
     migrateSave();
     saveNow();
+    applyAimAssistSettingsUI();
     return;
   }
 
@@ -3025,6 +3315,7 @@ async function cloudPullMerge(options = {}) {
   SAVE.ships = mergeShips(SAVE.ships, remote.ships);
   migrateSave();
   saveNow();
+  applyAimAssistSettingsUI();
   await cloudPush();
 }
 
@@ -4070,6 +4361,13 @@ const run = {
     hullHit: false,
     shotsFired: 0,
   },
+  aim: {
+    targetId: "",
+    lockUntil: 0,
+    selectedOnce: false,
+    autoActiveUntil: 0,
+    autoCooldownUntil: 0,
+  },
 };
 
 const player = {
@@ -4355,6 +4653,13 @@ function resetRun(mode) {
     zone: null,
     hullHit: false,
     shotsFired: 0,
+  };
+  run.aim = {
+    targetId: "",
+    lockUntil: 0,
+    selectedOnce: false,
+    autoActiveUntil: 0,
+    autoCooldownUntil: 0,
   };
 
   entities.bullets = [];
@@ -4984,9 +5289,51 @@ function updatePlayer(dt) {
   player.x = clamp(player.x, bound, WORLD.width - bound);
   player.y = clamp(player.y, bound, WORLD.height - bound);
 
-  const dx = input.mouseX - player.x;
-  const dy = input.mouseY - player.y;
-  player.angle = Math.atan2(dy, dx);
+  let stickyTarget = null;
+  if (stickyLockEnabled()) {
+    stickyTarget = findAimTargetById(run.aim.targetId);
+    if (stickyTarget) {
+      const dist = Math.hypot(Number(stickyTarget.x || 0) - player.x, Number(stickyTarget.y || 0) - player.y);
+      const outOfRange = dist > stickyMaxRangeForMode();
+      const expired = run.time > run.aim.lockUntil;
+      if (outOfRange || expired) {
+        stickyTarget = null;
+        clearAimTarget();
+      }
+    } else if (run.aim.targetId) {
+      clearAimTarget();
+    }
+
+    if (!stickyTarget && isAutoRelockActive()) {
+      const aimDir = { x: Math.cos(player.angle), y: Math.sin(player.angle) };
+      const next = AIM_TARGETING.findNextTarget(
+        validAimEnemies(),
+        { x: player.x, y: player.y },
+        aimDir,
+        AIM_TUNING.autoConeAngle,
+        stickyMaxRangeForMode()
+      );
+      if (next && setAimTarget(next, { markSelected: false, refreshSticky: true })) {
+        stickyTarget = next;
+      }
+    }
+  } else if (run.aim.targetId) {
+    clearAimTarget();
+  }
+
+  if (stickyTarget && stickyLockEnabled()) {
+    input.mouseX = Number(stickyTarget.x || input.mouseX);
+    input.mouseY = Number(stickyTarget.y || input.mouseY);
+    player.angle = AIM_TARGETING.updateAimTowardsTarget(
+      { x: player.x, y: player.y, angle: player.angle },
+      { x: input.mouseX, y: input.mouseY },
+      smoothAimFactor(dt)
+    );
+  } else {
+    const dx = input.mouseX - player.x;
+    const dy = input.mouseY - player.y;
+    player.angle = Math.atan2(dy, dx);
+  }
 
   if (player.alive) {
     player.shield = Math.min(player.shieldMax, player.shield + player.shieldRegen * dt);
@@ -5006,6 +5353,7 @@ function updatePlayer(dt) {
     const spreadLevel = run.runUpgrades.spread || 0;
     const shots = 1 + spreadLevel * 2;
     const spread = 0.14;
+    const assistDamageMult = isAutoRelockActive() ? AIM_TUNING.autoDamagePenalty : 1;
 
     if (run.mode === MODE.CAMPAIGN) run.campaign.shotsFired += shots;
 
@@ -5018,7 +5366,7 @@ function updatePlayer(dt) {
         vx: Math.cos(a) * player.bulletSpeed,
         vy: Math.sin(a) * player.bulletSpeed,
         team: "player",
-        damage: player.damage,
+        damage: player.damage * assistDamageMult,
         pierce: player.pierce,
       };
       spawnBullet(b);
@@ -5367,6 +5715,7 @@ function update(dt) {
   updateParticles(dt);
   updateWorld(dt);
   updateHud();
+  updateAutoLockButtonUi();
 }
 
 // Upgrades (in-run picks)

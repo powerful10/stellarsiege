@@ -44,6 +44,24 @@
         <button id="sideFullscreenBtn" class="btnGhost">Fullscreen</button>
         <button id="sideInfoBtn" class="btnGhost">Game Info</button>
         <button id="menuResetBtn" class="btnGhost">Reset Progress</button>
+        <div class="sideSection">
+          <div class="sideSection__title">Aim Assist</div>
+          <label class="sideToggle">
+            <input id="tapAssistToggle" type="checkbox" />
+            <span>Tap Assist</span>
+          </label>
+          <label class="sideToggle">
+            <input id="stickyLockToggle" type="checkbox" />
+            <span>Sticky Lock</span>
+          </label>
+          <label class="sideRange" for="aimAssistStrength">
+            <span>Aim Strength</span>
+            <div class="sideRange__row">
+              <input id="aimAssistStrength" type="range" min="0" max="100" step="1" />
+              <strong id="aimAssistStrengthValue">0%</strong>
+            </div>
+          </label>
+        </div>
         <div class="fine" style="margin:10px 6px 0">Tip: Progress saves locally on this device.</div>
       </div>
     </div>
@@ -103,6 +121,7 @@
       </div>
       <div class="touchControls__actions">
         <button class="touchBtn touchBtn--shoot" id="touchShoot" aria-label="Shoot">SH</button>
+        <button class="touchBtn touchBtn--assist hidden" id="touchAutoLockBtn" aria-label="Auto Lock">AUTO LOCK</button>
       </div>
     </div>
 
@@ -217,6 +236,9 @@
               <div class="fine">Store items are available when enabled for this build.</div>
             </div>
           </div>
+        </div>
+        <div class="hangarActions">
+          <button class="btnGhost" id="hangarHomeBtn">Back To Home</button>
         </div>
       </div>
     </div>
@@ -440,6 +462,7 @@
     <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
     <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-database-compat.js"></script>
     <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+    <script defer src="aim-targeting.js"></script>
     <script defer src="ship-3d.js"></script>
     <script defer src="rewarded-adapter.js"></script>
     <script defer src="script.js"></script>
