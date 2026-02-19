@@ -187,7 +187,7 @@ const infoBtn = must("infoBtn");
 // Hangar UI
 const pilotPillEl = must("pilotPill");
 const backFromHangarBtn = must("backFromHangarBtn");
-const hangarHomeBtn = must("hangarHomeBtn");
+const hangarHomeBtn = $("hangarHomeBtn");
 const statsBoxEl = must("statsBox");
 const shipPickerEl = must("shipPicker");
 const upgradeListEl = must("upgradeList");
@@ -2062,9 +2062,11 @@ function exitHangarToHome(event) {
 
 backFromHangarBtn.addEventListener("click", exitHangarToHome);
 backFromHangarBtn.addEventListener("pointerup", exitHangarToHome);
+backFromHangarBtn.addEventListener("touchend", exitHangarToHome, { passive: false });
 if (hangarHomeBtn) {
   hangarHomeBtn.addEventListener("click", exitHangarToHome);
   hangarHomeBtn.addEventListener("pointerup", exitHangarToHome);
+  hangarHomeBtn.addEventListener("touchend", exitHangarToHome, { passive: false });
 }
 backFromLeaderboardBtn.addEventListener("click", () => setState(STATE.MENU));
 backFromCampaignBtn.addEventListener("click", () => setState(STATE.MENU));

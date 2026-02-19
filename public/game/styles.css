@@ -1792,6 +1792,10 @@ body.hangar-open .topRight {
 }
 
 @media (pointer: coarse) {
+  body[data-state="hangar"] {
+    touch-action: pan-y;
+  }
+
   #hangar {
     z-index: 25;
     display: block;
@@ -1800,6 +1804,7 @@ body.hangar-open .topRight {
     overflow-x: hidden;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
   }
 
   #hangar .panel.panel--wide {
@@ -1815,6 +1820,7 @@ body.hangar-open .topRight {
     overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
+    touch-action: pan-y;
   }
 
   #hangar .panelTop {
@@ -1840,7 +1846,7 @@ body.hangar-open .topRight {
   #hangar .hangarGrid {
     grid-template-columns: 1fr;
     gap: 12px;
-    padding-bottom: 74px;
+    padding-bottom: calc(14px + env(safe-area-inset-bottom));
   }
 
   #hangar .card {
@@ -1905,8 +1911,10 @@ body.hangar-open .topRight {
 
   #hangar .list {
     max-height: none;
-    overflow: visible;
+    overflow: auto;
     padding-right: 0;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
   }
 
   #hangar .upgRow {
@@ -1947,16 +1955,18 @@ body.hangar-open .topRight {
     min-width: 120px;
     position: relative;
     z-index: 4;
+    pointer-events: auto;
+    touch-action: manipulation;
   }
 
   #hangar .hangarActions {
-    position: sticky;
-    bottom: calc(8px + env(safe-area-inset-bottom));
-    z-index: 5;
-    margin-top: -58px;
-    padding-top: 8px;
+    position: static;
+    z-index: 3;
+    margin-top: 12px;
+    padding-top: 0;
+    padding-bottom: calc(10px + env(safe-area-inset-bottom));
     justify-content: center;
-    background: linear-gradient(180deg, rgba(10, 15, 35, 0), rgba(10, 15, 35, 0.92) 36%);
+    background: transparent;
   }
 
   #hangar #hangarHomeBtn {
