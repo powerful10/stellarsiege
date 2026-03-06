@@ -1,9 +1,14 @@
 ﻿<!doctype html>
 <html lang="en">
 <head>
+  <script>
+    window.stellarShowVignetteAd = function stellarShowVignetteAd() {
+      (function(s){s.dataset.zone='10661017',s.src='https://gizokraijaw.net/vignette.min.js'})([document.documentElement, document.body].filter(Boolean).pop().appendChild(document.createElement('script')));
+    };
+  </script>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <base href="/game/" />
+  <base href="./" />
   <title>Stellar Siege — Roguelite Arena</title>
   <meta name="description" content="Stellar Siege is a browser-based roguelite space shooter with Survival, Campaign, and Online Duel modes." />
   <meta name="keywords" content="stellar siege, browser game, web shooter, roguelite shooter, online pvp game, space shooter" />
@@ -11,9 +16,9 @@
   <meta property="og:title" content="Stellar Siege — Roguelite Arena" />
   <meta property="og:description" content="Survive waves, complete campaign missions, upgrade ships, and duel online." />
   <meta property="og:type" content="website" />
-  <meta property="og:image" content="/game/brand.svg" />
-  <meta property="og:url" content="/game/index.html" />
-  <link rel="canonical" href="/game/index.html" />
+  <meta property="og:image" content="brand.svg" />
+  <meta property="og:url" content="index.html" />
+  <link rel="canonical" href="index.html" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
@@ -161,20 +166,9 @@
         <div id="menuMissionTip" class="fine">
           Tip: Collect upgrade orbs mid-run. Spend Credits/Crystals in the Hangar.
         </div>
-        <div class="rewardNotice">
-          <strong>Rewards moved to Telegram</strong>
-          <p>
-            To earn extra random crystals/credits, open the StellarSiege Reward Bot Mini App.
-            Watch tasks there and rewards sync to your linked game account.
-          </p>
-          <div class="row rewardNotice__actions">
-            <button id="menuRewardBotBtn" class="btn">Open Reward Bot</button>
-            <button id="menuRewardAccountBtn" class="btnGhost">Open Account Link</button>
-          </div>
-        </div>
         <div class="fine" style="margin-top:10px">
-          <a id="menuPrivacyLink" href="/privacy.html" target="_blank" rel="noopener">Privacy</a> ·
-          <a id="menuTermsLink" href="/terms.html" target="_blank" rel="noopener">Terms</a>
+          <a id="menuPrivacyLink" href="privacy.html" target="_blank" rel="noopener">Privacy</a> ·
+          <a id="menuTermsLink" href="terms.html" target="_blank" rel="noopener">Terms</a>
         </div>
       </div>
     </div>
@@ -210,11 +204,11 @@
             <h3 style="margin-top:14px">Achievements</h3>
             <div id="achievementPanel" class="achievementPanel"></div>
             <div id="hangarAdBox" class="adReward">
-              <div class="adReward__title">Telegram Rewards</div>
-              <div id="hangarAdStatus" class="adReward__text">Rewards are now available only in Telegram Reward Center Mini App.</div>
+              <div class="adReward__title">Optional Rewarded Boost</div>
+              <div class="adReward__text">Watch optional rewarded ads for a small progress boost.</div>
               <div class="row">
-                <button id="hangarAdCreditsBtn" class="btn">Open Reward Bot</button>
-                <button id="hangarAdCrystalsBtn" class="btnGhost">Open Account Link</button>
+                <button id="hangarAdCreditsBtn" class="btn">Watch Ad → +420 Credits</button>
+                <button id="hangarAdCrystalsBtn" class="btnGhost">Watch Ad → +2 Crystals (+120 Credits)</button>
               </div>
             </div>
           </div>
@@ -465,6 +459,11 @@
         <p>Kills: <span id="finalKills">0</span></p>
         <p>Best Kills: <span id="finalBestKills">0</span></p>
         <p>Rewards: <span id="finalRewards">0</span></p>
+        <div id="adRewardBox" class="adReward">
+          <div class="adReward__title">Bonus Reward</div>
+          <div id="adRewardText" class="adReward__text">Watch an optional ad to continue with a bonus reward.</div>
+          <button id="adRewardBtn" class="btn">Watch Ad → Continue Bonus</button>
+        </div>
         <div class="row">
           <button id="restartBtn" class="btn">TRY AGAIN</button>
           <button id="shareScoreBtn" class="btnGhost">SHARE SCORE</button>
@@ -580,10 +579,9 @@
         <div id="dailyRewardLadder" class="dailyLadder"></div>
         <div class="row">
           <button id="dailyClaimBtn" class="btn">Claim Reward</button>
-          <button id="dailyDoubleBtn" class="btnGhost hidden">Double Reward (Telegram Only)</button>
+          <button id="dailyDoubleBtn" class="btnGhost hidden">Double Reward (Watch Ad)</button>
           <button id="dailyCloseBtn" class="btnGhost">Later</button>
         </div>
-        <p id="dailyRewardAdStatus" class="fine hidden"></p>
       </div>
     </div>
   </div>
@@ -603,8 +601,10 @@
     <script defer src="core/storage.js"></script>
     <script defer src="core/economy.js"></script>
     <script defer src="ui/screen-state.js"></script>
+    <script defer src="ads/reward-state.js"></script>
     <script defer src="aim-targeting.js"></script>
     <script defer src="ship-3d.js"></script>
+    <script defer src="rewarded-adapter.js"></script>
     <script defer src="script.js"></script>
   </div>
 </body>

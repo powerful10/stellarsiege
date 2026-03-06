@@ -28,6 +28,7 @@ const LOG = window.StellarLogger || {
 const STORAGE = window.StellarStorage || null;
 const ECONOMY = window.StellarEconomy || null;
 const SCREEN_STATE = window.StellarScreenState || null;
+const REWARD_STATE = window.StellarRewardState || null;
 const REDESIGN_ENABLED = FLAGS.isEnabled("redesign_phase0", true);
 
 if (DEV_MODE) document.body.classList.add("dev-mode");
@@ -127,7 +128,7 @@ const ADS = {
     )
   ),
 };
-const ADS_DISABLED = true;
+const ADS_DISABLED = false;
 
 const AUTH_RUNTIME = {
   signedIn: false,
@@ -338,8 +339,6 @@ const menuSubtitlePillEl = $("menuSubtitlePill");
 const menuMissionTipEl = $("menuMissionTip");
 const menuPrivacyLinkEl = $("menuPrivacyLink");
 const menuTermsLinkEl = $("menuTermsLink");
-const menuRewardBotBtn = $("menuRewardBotBtn");
-const menuRewardAccountBtn = $("menuRewardAccountBtn");
 
 // Hangar UI
 const pilotPillEl = must("pilotPill");
@@ -361,7 +360,6 @@ const buyCredits65kBtn = must("buyCredits65k");
 const convertBtn = must("convertBtn");
 const hangarAdCreditsBtn = must("hangarAdCreditsBtn");
 const hangarAdCrystalsBtn = must("hangarAdCrystalsBtn");
-const hangarAdStatusEl = $("hangarAdStatus");
 const storeCardEl = must("storeCard");
 const upgradeTreeEl = $("upgradeTree");
 const achievementPanelEl = $("achievementPanel");
@@ -404,6 +402,9 @@ const copyLinkBtn = $("copyLinkBtn");
 const challengeFriendBtn = $("challengeFriendBtn");
 const newRecordBadgeEl = must("newRecordBadge");
 const fsHintEl = must("fsHint");
+const adRewardBoxEl = must("adRewardBox");
+const adRewardTextEl = must("adRewardText");
+const adRewardBtn = must("adRewardBtn");
 const infoOverlayEl = must("infoOverlay");
 const infoCloseBtn = must("infoCloseBtn");
 const infoFullscreenBtn = must("infoFullscreenBtn");
@@ -511,7 +512,6 @@ const dailyRewardLadderEl = must("dailyRewardLadder");
 const dailyClaimBtn = must("dailyClaimBtn");
 const dailyDoubleBtn = must("dailyDoubleBtn");
 const dailyCloseBtn = must("dailyCloseBtn");
-const dailyRewardAdStatusEl = $("dailyRewardAdStatus");
 const tutorialOverlayEl = $("tutorialOverlay");
 const tutorialTitleEl = $("tutorialTitle");
 const tutorialBodyEl = $("tutorialBody");
@@ -557,35 +557,6 @@ const SESSION = {
 
 const GUEST_REMINDER_INTERVAL_MS = 30 * 60 * 1000;
 const GUEST_REMINDER_DURATION_MS = 3000;
-const TG_LINK_CODE_MAX_AGE_MS = 5 * 60 * 1000;
-const REFERRAL_SHIP_ID = "starforged_envoy";
-const REFERRAL_TARGET = 100;
-const REFERRAL_PENDING_CODE_KEY = "stellar_referral_pending_code_v1";
-const TELEGRAM_REWARD_BOT_URL = (() => {
-  const raw = typeof window.TELEGRAM_REWARD_BOT_URL === "string" ? window.TELEGRAM_REWARD_BOT_URL.trim() : "";
-  return raw || "https://t.me/StellarSiegeRewardSystem_Bot";
-})();
-
-const TG_LINK = {
-  loading: false,
-  code: "",
-  expiresAt: 0,
-  error: "",
-};
-
-const REFERRAL = {
-  loading: false,
-  loadedForUid: "",
-  code: "",
-  inviteUrl: "",
-  referredCount: 0,
-  target: REFERRAL_TARGET,
-  rewardUnlocked: false,
-  error: "",
-  inflight: null,
-};
-
-let tgLinkUiTicker = null;
 
 let forcedPreviewTier = null;
 let unlockFxTimer = null;
@@ -1039,424 +1010,6 @@ function setAdProfileGateVisible(visible) {
   document.body.classList.toggle("ad-profile-gated", visible);
 }
 
-function normalizeTelegramLinkCode(value) {
-  return String(value || "")
-    .trim()
-    .toUpperCase()
-    .replace(/[^A-Z0-9]/g, "")
-    .slice(0, 8);
-}
-
-function isTelegramLinkCodeActive(now = Date.now()) {
-  const code = normalizeTelegramLinkCode(TG_LINK.code);
-  const expiresAt = Math.max(0, Math.floor(Number(TG_LINK.expiresAt || 0)));
-  return Boolean(code && expiresAt > now);
-}
-
-function telegramLinkCodeStatusText(now = Date.now()) {
-  if (TG_LINK.loading) return "Generating one-time code...";
-  if (isTelegramLinkCodeActive(now)) {
-    return `Expires in ${formatCooldown(Math.max(0, Number(TG_LINK.expiresAt || 0) - now))}.`;
-  }
-  if (TG_LINK.error) return TG_LINK.error;
-  return "Generate a code and enter it in Telegram Mini App > Link.";
-}
-
-function renderTelegramLinkCodeUi() {
-  const codeEl = document.getElementById("tgLinkCodeValue");
-  const stateEl = document.getElementById("tgLinkCodeState");
-  const hintEl = document.getElementById("tgLinkCodeHint");
-  const buttonEl = document.getElementById("tgLinkCodeCreateBtn");
-  const copyBtn = document.getElementById("tgLinkCodeCopyBtn");
-  if (!codeEl && !stateEl && !hintEl && !buttonEl && !copyBtn) return;
-
-  const now = Date.now();
-  const isActive = isTelegramLinkCodeActive(now);
-  if (!TG_LINK.loading && !isActive) {
-    TG_LINK.code = "";
-    TG_LINK.expiresAt = 0;
-  }
-
-  const activeCode = isActive ? normalizeTelegramLinkCode(TG_LINK.code) : "";
-  if (codeEl) codeEl.textContent = activeCode || "-";
-  if (stateEl) stateEl.textContent = isActive ? "Ready" : TG_LINK.loading ? "Working..." : "Idle";
-  if (hintEl) hintEl.textContent = telegramLinkCodeStatusText(now);
-  if (buttonEl) {
-    buttonEl.disabled = TG_LINK.loading;
-    buttonEl.textContent = TG_LINK.loading ? "Generating..." : "Generate link code";
-  }
-  if (copyBtn) {
-    copyBtn.disabled = !activeCode;
-    copyBtn.textContent = activeCode ? "Copy code" : "Copy unavailable";
-  }
-}
-
-function ensureTelegramLinkCodeTicker() {
-  if (tgLinkUiTicker) return;
-  tgLinkUiTicker = setInterval(() => {
-    renderTelegramLinkCodeUi();
-  }, 1000);
-}
-
-async function createTelegramLinkCode() {
-  if (TG_LINK.loading) return;
-
-  cloudInit();
-  if (!CLOUD.enabled || !CLOUD.user) {
-    TG_LINK.error = "Sign in with Google first.";
-    renderTelegramLinkCodeUi();
-    return;
-  }
-
-  TG_LINK.loading = true;
-  TG_LINK.error = "";
-  renderTelegramLinkCodeUi();
-
-  async function requestCode(forceRefreshToken = false) {
-    const idToken = await CLOUD.user.getIdToken(forceRefreshToken);
-    const apiBase = paymentsApiBase();
-    const response = await fetch(`${apiBase}/api/linkcodes/create`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${idToken}`,
-      },
-      body: JSON.stringify({}),
-    });
-
-    let data = null;
-    try {
-      data = await response.json();
-    } catch {
-      data = null;
-    }
-
-    return { response, data };
-  }
-
-  try {
-    let { response, data } = await requestCode(false);
-    const firstErrorCode =
-      !response.ok && data && (data.error || data.code) ? String(data.error || data.code).trim() : "";
-    if (!response.ok && firstErrorCode === "Invalid auth token") {
-      ({ response, data } = await requestCode(true));
-    }
-
-    const code = normalizeTelegramLinkCode(data && data.code ? data.code : "");
-    const expiresAt = Math.max(0, Math.floor(Number(data && data.expiresAt ? data.expiresAt : 0)));
-    if (!response.ok || !data || !data.ok || !code || !expiresAt) {
-      const errorCode = String((data && (data.error || data.code)) || "create_failed").trim();
-      throw new Error(errorCode || "create_failed");
-    }
-
-    const clampedExpiresAt = Math.min(Date.now() + TG_LINK_CODE_MAX_AGE_MS, expiresAt);
-    TG_LINK.code = code;
-    TG_LINK.expiresAt = clampedExpiresAt;
-    TG_LINK.error = "";
-    showToast(`Telegram link code: ${code}`);
-  } catch (error) {
-    const code = String(error && error.message ? error.message : "create_failed").trim();
-    if (code === "Firebase Admin not configured on server.") {
-      TG_LINK.error = "Server Firebase config is missing.";
-    } else if (code === "already_linked") {
-      TG_LINK.error = "This game account is already linked to Telegram.";
-    } else if (code === "Missing Authorization: Bearer <idToken>") {
-      TG_LINK.error = "Sign-in not ready yet. Reopen Account and try again.";
-    } else if (code === "Invalid auth token") {
-      TG_LINK.error = "Session expired. Sign in again and retry.";
-    } else {
-      TG_LINK.error = `Could not create link code (${code}).`;
-    }
-  } finally {
-    TG_LINK.loading = false;
-    renderTelegramLinkCodeUi();
-  }
-}
-
-async function copyTelegramLinkCode() {
-  const activeCode = isTelegramLinkCodeActive(Date.now()) ? normalizeTelegramLinkCode(TG_LINK.code) : "";
-  if (!activeCode) {
-    TG_LINK.error = "Generate a code first.";
-    renderTelegramLinkCodeUi();
-    return;
-  }
-
-  try {
-    if (navigator && navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
-      await navigator.clipboard.writeText(activeCode);
-    } else {
-      const temp = document.createElement("textarea");
-      temp.value = activeCode;
-      temp.setAttribute("readonly", "readonly");
-      temp.style.position = "fixed";
-      temp.style.left = "-9999px";
-      document.body.appendChild(temp);
-      temp.focus();
-      temp.select();
-      document.execCommand("copy");
-      document.body.removeChild(temp);
-    }
-    showToast(`Link code copied: ${activeCode}`);
-  } catch {
-    TG_LINK.error = "Copy failed. Select the code manually.";
-    renderTelegramLinkCodeUi();
-  }
-}
-
-function openTelegramRewardBot() {
-  const url = String(TELEGRAM_REWARD_BOT_URL || "").trim();
-  if (!url) {
-    showToast("Telegram Reward Bot URL is missing.");
-    return;
-  }
-  window.open(url, "_blank", "noopener,noreferrer");
-}
-
-function normalizeReferralCode(value) {
-  return String(value || "")
-    .trim()
-    .toUpperCase()
-    .replace(/[^A-Z0-9]/g, "")
-    .slice(0, 16);
-}
-
-function readPendingReferralCode() {
-  try {
-    const code = normalizeReferralCode(localStorage.getItem(REFERRAL_PENDING_CODE_KEY) || "");
-    if (!code || code.length < 6 || code === "SHARE") return "";
-    return code;
-  } catch {
-    return "";
-  }
-}
-
-function writePendingReferralCode(code) {
-  const normalized = normalizeReferralCode(code);
-  if (!normalized || normalized.length < 6 || normalized === "SHARE") return;
-  try {
-    localStorage.setItem(REFERRAL_PENDING_CODE_KEY, normalized);
-  } catch {
-    // ignore storage issues
-  }
-}
-
-function clearPendingReferralCode() {
-  try {
-    localStorage.removeItem(REFERRAL_PENDING_CODE_KEY);
-  } catch {
-    // ignore storage issues
-  }
-}
-
-function captureReferralCodeFromQuery() {
-  const refCode = normalizeReferralCode(QUERY.get("ref"));
-  if (!refCode || refCode.length < 6 || refCode === "SHARE") return;
-  writePendingReferralCode(refCode);
-}
-
-async function referralApiRequest(path, { method = "GET", body = null } = {}) {
-  cloudInit();
-  if (!CLOUD.enabled || !CLOUD.user) throw new Error("sign_in_required");
-
-  const idToken = await CLOUD.user.getIdToken();
-  const apiBase = paymentsApiBase();
-  const headers = {
-    Authorization: `Bearer ${idToken}`,
-  };
-  const requestInit = { method, headers };
-  if (body != null) {
-    headers["Content-Type"] = "application/json";
-    requestInit.body = JSON.stringify(body);
-  }
-
-  const response = await fetch(`${apiBase}${path}`, requestInit);
-  let data = null;
-  try {
-    data = await response.json();
-  } catch {
-    data = null;
-  }
-
-  if (!response.ok || !data || data.ok !== true) {
-    const code = String((data && (data.error || data.code)) || `http_${response.status}`);
-    throw new Error(code);
-  }
-  return data;
-}
-
-async function refreshReferralStatus(force = false) {
-  cloudInit();
-  const uid = CLOUD.user && CLOUD.user.uid ? String(CLOUD.user.uid) : "";
-  if (!uid) {
-    REFERRAL.loadedForUid = "";
-    REFERRAL.code = "";
-    REFERRAL.inviteUrl = "";
-    REFERRAL.referredCount = 0;
-    REFERRAL.target = REFERRAL_TARGET;
-    REFERRAL.rewardUnlocked = false;
-    REFERRAL.error = "";
-    REFERRAL.loading = false;
-    REFERRAL.inflight = null;
-    return null;
-  }
-
-  if (!force && REFERRAL.loading && REFERRAL.inflight) return REFERRAL.inflight;
-  if (!force && REFERRAL.loadedForUid === uid && REFERRAL.code) return REFERRAL;
-
-  REFERRAL.loading = true;
-  REFERRAL.error = "";
-  REFERRAL.inflight = (async () => {
-    try {
-      const data = await referralApiRequest("/api/referrals/status", { method: "GET" });
-      REFERRAL.loadedForUid = uid;
-      REFERRAL.code = normalizeReferralCode(data.code || "");
-      REFERRAL.inviteUrl = String(data.inviteUrl || "");
-      REFERRAL.referredCount = Math.max(0, Math.floor(Number(data.referredCount || 0)));
-      REFERRAL.target = Math.max(1, Math.floor(Number(data.target || REFERRAL_TARGET)));
-      REFERRAL.rewardUnlocked = Boolean(data.rewardUnlocked);
-      REFERRAL.error = "";
-    } catch (error) {
-      REFERRAL.error = String(error && error.message ? error.message : "referral_unavailable");
-    } finally {
-      REFERRAL.loading = false;
-      REFERRAL.inflight = null;
-      if (state === STATE.ACCOUNT) renderAccountPanel();
-    }
-    return REFERRAL;
-  })();
-
-  return REFERRAL.inflight;
-}
-
-async function copyReferralInviteLink() {
-  await refreshReferralStatus(false);
-  const link = String(REFERRAL.inviteUrl || "");
-  if (!link) {
-    showToast("Invite link is not ready yet.");
-    return;
-  }
-  try {
-    if (navigator && navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
-      await navigator.clipboard.writeText(link);
-    } else {
-      const temp = document.createElement("textarea");
-      temp.value = link;
-      temp.setAttribute("readonly", "readonly");
-      temp.style.position = "fixed";
-      temp.style.left = "-9999px";
-      document.body.appendChild(temp);
-      temp.focus();
-      temp.select();
-      document.execCommand("copy");
-      document.body.removeChild(temp);
-    }
-    showToast("Invite link copied.");
-  } catch {
-    showToast("Copy failed. Copy invite link manually.");
-  }
-}
-
-async function shareReferralInviteLink() {
-  await refreshReferralStatus(false);
-  const link = String(REFERRAL.inviteUrl || "");
-  if (!link) {
-    showToast("Invite link is not ready yet.");
-    return;
-  }
-
-  const shareText = `Join me in Stellar Siege: ${link}`;
-  if (navigator && typeof navigator.share === "function") {
-    try {
-      await navigator.share({
-        title: "Stellar Siege Invite",
-        text: shareText,
-        url: link,
-      });
-      return;
-    } catch {
-      // fall back to copy
-    }
-  }
-  await copyReferralInviteLink();
-}
-
-async function claimPendingReferralCode() {
-  const code = readPendingReferralCode();
-  if (!code) return null;
-
-  cloudInit();
-  if (!CLOUD.enabled || !CLOUD.user) return null;
-
-  try {
-    const data = await referralApiRequest("/api/referrals/claim", {
-      method: "POST",
-      body: { code },
-    });
-    clearPendingReferralCode();
-    const applied = Boolean(data.applied);
-    if (applied) {
-      showToast("Referral registered. Thanks for joining through invite link.");
-    }
-    await refreshReferralStatus(true);
-    return data;
-  } catch (error) {
-    const codeMsg = String(error && error.message ? error.message : "");
-    const terminal = new Set([
-      "invalid_code",
-      "self_referral_not_allowed",
-      "already_has_referrer",
-      "already_claimed",
-      "already_counted_for_owner",
-    ]);
-    if (terminal.has(codeMsg)) {
-      clearPendingReferralCode();
-    }
-    return null;
-  }
-}
-
-function bindReferralActions() {
-  const copyBtn = document.getElementById("referralCopyBtn");
-  const shareBtn = document.getElementById("referralShareBtn");
-  const refreshBtn = document.getElementById("referralRefreshBtn");
-
-  if (copyBtn) {
-    copyBtn.addEventListener("click", () => {
-      copyReferralInviteLink();
-    });
-  }
-
-  if (shareBtn) {
-    shareBtn.addEventListener("click", () => {
-      shareReferralInviteLink();
-    });
-  }
-
-  if (refreshBtn) {
-    refreshBtn.addEventListener("click", () => {
-      refreshReferralStatus(true);
-    });
-  }
-}
-
-function bindTelegramLinkCodeActions() {
-  const createBtn = document.getElementById("tgLinkCodeCreateBtn");
-  const copyBtn = document.getElementById("tgLinkCodeCopyBtn");
-  if (createBtn) {
-    createBtn.addEventListener("click", () => {
-      createTelegramLinkCode();
-    });
-  }
-  if (copyBtn) {
-    copyBtn.addEventListener("click", () => {
-      copyTelegramLinkCode();
-    });
-  }
-
-  ensureTelegramLinkCodeTicker();
-  renderTelegramLinkCodeUi();
-}
-
 function renderAccountPanel() {
   cloudInit();
 
@@ -1562,7 +1115,6 @@ function renderAccountPanel() {
     { label: "Email", value: safe(u.email || "(not available)") },
     { label: "UID", value: `${safe(String(u.uid || "").slice(0, 10))}<small>...</small>` },
     { label: "Local Bubble", value: safe(SAVE.profile.localBubbleName || "Assigning...") },
-    { label: "Referred By", value: safe(SAVE.profile.referredByCode ? SAVE.profile.referredByCode : "Direct signup") },
     { label: "Signed In", value: safe(authRememberHint()) },
     { label: "Account Started", value: safe(formatDateTime(accountStartedAt)) },
     { label: "Last Save Sync", value: safe(formatDateTime(SAVE.profile.updatedAt || 0)) },
@@ -1602,97 +1154,42 @@ function renderAccountPanel() {
     { label: "Credits Earned", value: formatInt(SAVE.profile.totalCreditsEarned || 0) },
     { label: "Crystals Earned", value: formatInt(SAVE.profile.totalCrystalsEarned || 0) },
     { label: "XP Earned", value: formatInt(SAVE.profile.totalXpEarned || 0) },
-    { label: "Reward Claims", value: formatInt(adClaimTotal) },
+    { label: "Rewarded Claims", value: formatInt(adClaimTotal) },
   ]);
-
-  const referralCount = Math.max(0, Math.floor(Number(REFERRAL.referredCount || 0)));
-  const referralTarget = Math.max(1, Math.floor(Number(REFERRAL.target || REFERRAL_TARGET)));
-  const referralRemaining = Math.max(0, referralTarget - referralCount);
-  const referralProgress = Math.max(0, Math.min(1, referralCount / referralTarget));
-  const referralShipState = ensureShipState(REFERRAL_SHIP_ID);
-  const referralRewardReady = Boolean(REFERRAL.rewardUnlocked || referralShipState.owned);
-  const referralStatusText = REFERRAL.loading
-    ? "Loading referral status..."
-    : REFERRAL.error
-    ? `Status unavailable (${REFERRAL.error}).`
-    : referralRewardReady
-    ? "Unlocked: Starforged Envoy is now available in your Hangar."
-    : `${formatInt(referralRemaining)} more invited pilots needed to unlock Starforged Envoy.`;
-
-  const referralSection = `
-    <section class="accountSection">
-      <h3>Referral Command Ship</h3>
-      ${grid([
-        { label: "Referral Code", value: safe(REFERRAL.code || "-") },
-        { label: "Successful Invites", value: `${formatInt(referralCount)} / ${formatInt(referralTarget)}` },
-        { label: "Ship Reward", value: referralRewardReady ? "Starforged Envoy (Unlocked)" : "Starforged Envoy (Locked)" },
-        { label: "Invite Link", value: REFERRAL.inviteUrl ? `<small>${safe(REFERRAL.inviteUrl)}</small>` : "-" },
-      ])}
-      <div class="referralProgress" aria-hidden="true">
-        <div class="referralProgress__bar" style="width:${Math.round(referralProgress * 100)}%"></div>
+  const adHistoryRows = adHistory.slice(0, 20).map((entry) => {
+    const rewardParts = [];
+    if (entry.credits > 0) rewardParts.push(`+${formatInt(entry.credits)} credits`);
+    if (entry.crystals > 0) rewardParts.push(`+${formatInt(entry.crystals)} crystals`);
+    if (entry.xp > 0) rewardParts.push(`+${formatInt(entry.xp)} xp`);
+    const rewardText = rewardParts.join(" · ") || "No reward";
+    return `
+      <div class="adHistoryRow">
+        <div class="adHistoryRow__top">
+          <strong>${safe(entry.placement || "unknown")}</strong>
+          <span>${safe(formatDateTime(entry.at || 0))}</span>
+        </div>
+        <div class="adHistoryRow__reward">${safe(rewardText)}</div>
       </div>
-      <div class="fine">${safe(referralStatusText)}</div>
-      <div class="row" style="margin-top:10px; justify-content:flex-start">
-        <button class="btn" id="referralCopyBtn">Copy invite link</button>
-        <button class="btnGhost" id="referralShareBtn">Share invite</button>
-        <button class="btnGhost" id="referralRefreshBtn">Refresh</button>
+    `;
+  });
+  const adHistorySection = `
+    <section class="accountSection">
+      <h3>Ad Reward History</h3>
+      ${grid([
+        { label: "History Claims", value: formatInt(adTotals.claims) },
+        { label: "Legacy Claims", value: formatInt(adBaselineClaims) },
+        { label: "History Credits", value: formatInt(adTotals.credits) },
+        { label: "History Crystals", value: formatInt(adTotals.crystals) },
+        { label: "History XP", value: formatInt(adTotals.xp) },
+        { label: "Ledger Integrity", value: adLedgerAligned ? "OK" : "Mismatch detected" },
+      ])}
+      <div class="adHistoryList">
+        ${adHistoryRows.length ? adHistoryRows.join("") : `<div class="fine">No ad rewards claimed yet.</div>`}
       </div>
     </section>
   `;
 
-  const linkedTelegramId = String(SAVE.profile.telegramId || "").trim();
-  const linkedTelegramUsername = String(SAVE.profile.telegramUsername || "").trim();
-  const isTelegramLinked = Boolean(linkedTelegramId);
-  const maskedTelegramId =
-    linkedTelegramId.length > 6
-      ? `${linkedTelegramId.slice(0, 3)}...${linkedTelegramId.slice(-3)}`
-      : linkedTelegramId || "-";
-
-  const telegramLinkSection = `
-    <section class="accountSection">
-      <h3>Telegram Mini App Link</h3>
-      ${grid([
-        {
-          label: "Link Status",
-          value: isTelegramLinked ? "Linked (locked)" : `<span id="tgLinkCodeState">Idle</span>`,
-        },
-        isTelegramLinked
-          ? {
-              label: "Linked Telegram",
-              value: linkedTelegramUsername ? `@${safe(linkedTelegramUsername)} (${safe(maskedTelegramId)})` : safe(maskedTelegramId),
-            }
-          : { label: "One-time Code", value: `<span id="tgLinkCodeValue">-</span>` },
-      ])}
-      <div class="row" style="margin-top:10px; justify-content:flex-start">
-        ${
-          isTelegramLinked
-            ? `<button class="btn" id="tgLinkCodeCreateBtn" disabled>Already linked</button>`
-            : `<button class="btn" id="tgLinkCodeCreateBtn">Generate link code</button>`
-        }
-        ${
-          isTelegramLinked
-            ? ""
-            : `<button class="btnGhost" id="tgLinkCodeCopyBtn">Copy unavailable</button>`
-        }
-        <button class="btnGhost" id="accountRewardBotBtn">Open Reward Bot</button>
-      </div>
-      <div class="fine" id="tgLinkCodeHint">${
-        isTelegramLinked
-          ? "This account is already linked and cannot generate new link codes."
-          : "Generate a code, link in Telegram Mini App &gt; Link, then use Reward Center there."
-      }</div>
-    </section>
-  `;
-
-  accountBoxEl.innerHTML =
-    identitySection + progressionSection + combatSection + economySection + referralSection + telegramLinkSection;
-  bindTelegramLinkCodeActions();
-  bindReferralActions();
-  const accountRewardBotBtn = document.getElementById("accountRewardBotBtn");
-  if (accountRewardBotBtn) {
-    accountRewardBotBtn.addEventListener("click", () => openTelegramRewardBot());
-  }
-  void refreshReferralStatus(false);
+  accountBoxEl.innerHTML = identitySection + progressionSection + combatSection + economySection + adHistorySection;
   accountSyncBtn.disabled = false;
   accountSignOutBtn.disabled = false;
 }
@@ -2257,10 +1754,6 @@ function defaultSave() {
       unlockedTitles: ["Cadet"],
       achievementUnlocks: {},
       abilityUses: {},
-      referredByUid: "",
-      referredByCode: "",
-      referredAt: 0,
-      referralRewardUnlockedAt: 0,
       updatedAt: 0,
     },
     ships: {},
@@ -2550,26 +2043,6 @@ const SHIPS = [
       droneCount: 2,
     },
   },
-  {
-    id: "starforged_envoy",
-    name: "Starforged Envoy",
-    rarity: "Referral",
-    unlockMethod: "referral",
-    referralTarget: REFERRAL_TARGET,
-    priceCredits: 0,
-    priceCrystals: 0,
-    base: {
-      speed: 342,
-      bulletSpeed: 780,
-      damage: 1.82,
-      fireRate: 0.098,
-      shieldMax: 176,
-      shieldRegen: 5.1,
-      hullMax: 178,
-      pierce: 3,
-      droneCount: 2,
-    },
-  },
 ];
 
 const SHIP_STYLES = {
@@ -2584,7 +2057,6 @@ const SHIP_STYLES = {
   warden: { main: "#84cc16", accent: "#bef264" },
   valkyrie: { main: "#fb923c", accent: "#fdba74" },
   nova_revenant: { main: "#e879f9", accent: "#f0abfc" },
-  starforged_envoy: { main: "#fcd34d", accent: "#60a5fa" },
 };
 
 const ACCOUNT_TREE_NODES = [
@@ -2793,12 +2265,6 @@ const SHIP_ABILITIES = {
     maxUses: 3,
     description: "Restore hull and shield (limited uses).",
   },
-  starforged_envoy: {
-    key: "overdrive",
-    name: "Overdrive+",
-    cooldown: 18,
-    description: "Enhanced combat boost with shorter cooldown.",
-  },
 };
 
 function abilityForShip(shipId) {
@@ -2823,7 +2289,6 @@ function shipSvg(shipId, tier) {
     warden: ["#84cc16", "#bef264", "#65a30d"],
     valkyrie: ["#fb923c", "#fdba74", "#ea580c"],
     nova_revenant: ["#e879f9", "#f0abfc", "#a21caf"],
-    starforged_envoy: ["#fcd34d", "#93c5fd", "#f59e0b"],
   };
   const colors = palettes[shipId] || ["#1de2c4", "#6ee7b7", "#0ea5e9"];
   const c1 = colors[0];
@@ -3116,10 +2581,6 @@ function migrateSave() {
   if (!SAVE.profile.abilityUses || typeof SAVE.profile.abilityUses !== "object") {
     SAVE.profile.abilityUses = {};
   }
-  if (typeof SAVE.profile.referredByUid !== "string") SAVE.profile.referredByUid = "";
-  if (typeof SAVE.profile.referredByCode !== "string") SAVE.profile.referredByCode = "";
-  if (!Number.isFinite(Number(SAVE.profile.referredAt))) SAVE.profile.referredAt = 0;
-  if (!Number.isFinite(Number(SAVE.profile.referralRewardUnlockedAt))) SAVE.profile.referralRewardUnlockedAt = 0;
   if (typeof SAVE.profile.adServerClaimsDay !== "string") SAVE.profile.adServerClaimsDay = "";
   if (!Number.isFinite(Number(SAVE.profile.adServerClaims))) SAVE.profile.adServerClaims = 0;
   if (!Array.isArray(SAVE.profile.adRewardHistory)) SAVE.profile.adRewardHistory = [];
@@ -3159,7 +2620,7 @@ const I18N_MESSAGES = {
     "settings.track_current": "Current track: {{name}}",
     "settings.language_title": "Language",
     "settings.language_label": "Select Language",
-    "settings.language_hint": "Game interface updates fully to your selected language.",
+    "settings.language_hint": "English, Uzbek, Russian, and Turkish are fully localized. Other languages may be partial.",
     "settings.ads_title": "Ad Privacy",
     "settings.ads_hint": "Choose your ad setting. You can continue with personalized or non-personalized ads.",
     "settings.ads_personalized": "Personalized Ads",
@@ -3225,7 +2686,7 @@ const I18N_MESSAGES = {
     "settings.track_current": "Joriy trek: {{name}}",
     "settings.language_title": "Til",
     "settings.language_label": "Tilni Tanlang",
-    "settings.language_hint": "O'yin interfeysi tanlangan tilga to'liq o'tadi.",
+    "settings.language_hint": "Ingliz, o'zbek, rus va turk tillari to'liq tarjima qilingan. Boshqa tillar qisman bo'lishi mumkin.",
     "settings.ads_title": "Reklama Maxfiyligi",
     "settings.ads_hint": "Reklama sozlamasini tanlang. Shaxsiylashtirilgan yoki shaxsiylashtirilmagan reklamalarni davom ettirishingiz mumkin.",
     "settings.ads_personalized": "Shaxsiylashtirilgan Reklamalar",
@@ -3291,7 +2752,7 @@ const I18N_MESSAGES = {
     "settings.track_current": "Текущий трек: {{name}}",
     "settings.language_title": "Язык",
     "settings.language_label": "Выбор Языка",
-    "settings.language_hint": "Интерфейс игры полностью переключается на выбранный язык.",
+    "settings.language_hint": "Английский, узбекский, русский и турецкий переведены полностью. Остальные языки могут быть частичными.",
     "settings.ads_title": "Конфиденциальность Рекламы",
     "settings.ads_hint": "Выберите рекламные настройки. Можно использовать персонализированную или неперсонализированную рекламу.",
     "settings.ads_personalized": "Персонализированная Реклама",
@@ -3357,7 +2818,7 @@ const I18N_MESSAGES = {
     "settings.track_current": "Geçerli parça: {{name}}",
     "settings.language_title": "Dil",
     "settings.language_label": "Dil Seçimi",
-    "settings.language_hint": "Oyun arayüzü seçtiğiniz dile tamamen geçer.",
+    "settings.language_hint": "İngilizce, Özbekçe, Rusça ve Türkçe tamamen yerelleştirildi. Diğer diller kısmi olabilir.",
     "settings.ads_title": "Reklam Gizliliği",
     "settings.ads_hint": "Reklam tercihini seç. Kişiselleştirilmiş veya kişiselleştirilmemiş reklamlarla devam edebilirsin.",
     "settings.ads_personalized": "Kişiselleştirilmiş Reklamlar",
@@ -3425,7 +2886,7 @@ I18N_MESSAGES.es = {
   "settings.track_current": "Pista actual: {{name}}",
   "settings.language_title": "Idioma",
   "settings.language_label": "Seleccionar Idioma",
-  "settings.language_hint": "La interfaz del juego cambia completamente al idioma seleccionado.",
+  "settings.language_hint": "El texto principal de menú y ajustes está localizado. Más textos del juego se pueden ampliar luego.",
 };
 
 I18N_MESSAGES.fr = {
@@ -3452,7 +2913,7 @@ I18N_MESSAGES.fr = {
   "settings.track_current": "Piste actuelle : {{name}}",
   "settings.language_title": "Langue",
   "settings.language_label": "Choisir la Langue",
-  "settings.language_hint": "L'interface du jeu passe entièrement à la langue sélectionnée.",
+  "settings.language_hint": "Le texte principal menu/paramètres est localisé. Les autres textes du jeu peuvent être ajoutés ensuite.",
 };
 
 I18N_MESSAGES.de = {
@@ -3479,7 +2940,7 @@ I18N_MESSAGES.de = {
   "settings.track_current": "Aktueller Track: {{name}}",
   "settings.language_title": "Sprache",
   "settings.language_label": "Sprache Wählen",
-  "settings.language_hint": "Die Spieloberfläche wird vollständig auf die gewählte Sprache umgestellt.",
+  "settings.language_hint": "Wichtige Menü- und Einstellungstexte sind lokalisiert. Weitere Spieltexte können später ergänzt werden.",
 };
 
 function localizeTemplate(template, vars = {}) {
@@ -3491,243 +2952,6 @@ function t(key, vars = {}) {
   const dict = I18N_MESSAGES[lang] || I18N_MESSAGES.en;
   const fallback = I18N_MESSAGES.en[key] || key;
   return localizeTemplate(dict[key] || fallback, vars);
-}
-
-const I18N_LITERAL_CATALOG_URL = "i18n-literals.json";
-const I18N_LOCALIZE_ATTRS = Object.freeze(["aria-label", "title", "placeholder"]);
-const I18N_TEXT_NODE_SOURCE = new WeakMap();
-const I18N_ATTR_SOURCE = new WeakMap();
-let I18N_LITERALS = { en: {} };
-let i18nCatalogPromise = null;
-let i18nMutationObserver = null;
-let i18nMutationGuard = false;
-
-function currentLanguageCode() {
-  return normalizeLanguageCode(SAVE && SAVE.profile ? SAVE.profile.language : "en");
-}
-
-function normalizeI18nPhrase(value) {
-  return String(value == null ? "" : value).replace(/\s+/g, " ").trim();
-}
-
-function literalTranslate(source, vars = {}) {
-  const raw = String(source == null ? "" : source).trim();
-  if (!raw) return "";
-  const key = normalizeI18nPhrase(raw);
-  const lang = currentLanguageCode();
-  const dict = I18N_LITERALS[lang] || {};
-  const en = I18N_LITERALS.en || {};
-  const fallback = en[raw] || en[key] || raw;
-  return localizeTemplate(dict[raw] || dict[key] || fallback, vars);
-}
-
-function localizeDynamicPhrase(phrase) {
-  let m = phrase.match(/^Need (\d+) credits\.?$/i);
-  if (m) return literalTranslate("Need {{amount}} credits.", { amount: m[1] });
-  m = phrase.match(/^Need (\d+) crystals\.?$/i);
-  if (m) return literalTranslate("Need {{amount}} crystals.", { amount: m[1] });
-  m = phrase.match(/^Need (\d+) credits to reroll\.?$/i);
-  if (m) return literalTranslate("Need {{amount}} credits to reroll.", { amount: m[1] });
-  m = phrase.match(/^Daily mission rerolled:\s*(.+)$/i);
-  if (m) return literalTranslate("Daily mission rerolled: {{title}}", { title: m[1] });
-  m = phrase.match(/^Converted (\d+) crystals into (\d+) credits\.?$/i);
-  if (m) return literalTranslate("Converted {{crystals}} crystals into {{credits}} credits.", { crystals: m[1], credits: m[2] });
-  m = phrase.match(/^Auto Lock cooldown:\s*(\d+)s$/i);
-  if (m) return literalTranslate("Auto Lock cooldown: {{seconds}}s", { seconds: m[1] });
-  m = phrase.match(/^Link code copied:\s*(.+)$/i);
-  if (m) return literalTranslate("Link code copied: {{code}}", { code: m[1] });
-  m = phrase.match(/^Telegram link code:\s*(.+)$/i);
-  if (m) return literalTranslate("Telegram link code: {{code}}", { code: m[1] });
-  m = phrase.match(/^Next rewarded ad in\s+(.+)\.$/i);
-  if (m) return literalTranslate("Next rewarded ad in {{time}}.", { time: m[1] });
-  m = phrase.match(/^Challenge prepared for (.+)\. Press Create to open room ([A-Z0-9]+)\.$/i);
-  if (m) return literalTranslate("Challenge prepared for {{target}}. Press Create to open room {{room}}.", { target: m[1], room: m[2] });
-  m = phrase.match(/^Room created:\s*([A-Z0-9]+)\. Share the code, then press Start Duel\.$/i);
-  if (m) return literalTranslate("Room created: {{code}}. Share the code, then press Start Duel.", { code: m[1] });
-  m = phrase.match(/^Joined room\s+([A-Z0-9]+)\. Waiting for host to start\.$/i);
-  if (m) return literalTranslate("Joined room {{code}}. Waiting for host to start.", { code: m[1] });
-  m = phrase.match(/^Room\s+([A-Z0-9]+)\s+-\s+(.+)\s+-\s+(.+)$/i);
-  if (m) return literalTranslate("Room {{code}} - {{players}} - {{status}}", { code: m[1], players: m[2], status: m[3] });
-  m = phrase.match(/^Mission\s+(\d+):\s+(.+)$/i);
-  if (m) return literalTranslate("Mission {{id}}: {{name}}", { id: m[1], name: m[2] });
-  m = phrase.match(/^Reward ~(\d+) credits$/i);
-  if (m) return literalTranslate("Reward ~{{credits}} credits", { credits: m[1] });
-  m = phrase.match(/^Wave\s+(\d+)\s+-\s+(.+)$/i);
-  if (m) return literalTranslate("Wave {{wave}} - {{date}}", { wave: m[1], date: m[2] });
-  m = phrase.match(/^W\s+(\d+)\s+[·.]\s+L\s+(\d+)\s+[·.]\s+Bubble\s+(.+)$/i);
-  if (m) return literalTranslate("W {{wins}} · L {{losses}} · Bubble {{bubble}}", { wins: m[1], losses: m[2], bubble: m[3] });
-  m = phrase.match(/^W\s+(\d+)\s+[·.]\s+L\s+(\d+)\s+[·.]\s+Online\s+(\d+)\s+[·.]\s+Games\s+(\d+)\s+[·.]\s+XP\s+(\d+)\s+[·.]\s+(.+)$/i);
-  if (m) {
-    return literalTranslate("W {{wins}} · L {{losses}} · Online {{online}} · Games {{games}} · XP {{xp}} · {{bubble}}", {
-      wins: m[1], losses: m[2], online: m[3], games: m[4], xp: m[5], bubble: m[6],
-    });
-  }
-  m = phrase.match(/^Rank\s+(\d+)\/(\d+)$/i);
-  if (m) return literalTranslate("Rank {{rank}}/{{max}}", { rank: m[1], max: m[2] });
-  m = phrase.match(/^Buy\s+(\d+)\s+(.+)$/i);
-  if (m) return literalTranslate("Buy {{cost}} {{currency}}", { cost: m[1], currency: m[2] });
-  m = phrase.match(/^Need\s+(\d+)\s+(.+)$/i);
-  if (m) return literalTranslate("Need {{cost}} {{currency}}", { cost: m[1], currency: m[2] });
-  m = phrase.match(/^Reward granted:\s+(.+)$/i);
-  if (m) return literalTranslate("Reward granted: {{summary}}", { summary: m[1] });
-  m = phrase.match(/^Purchase failed:\s+(.+)$/i);
-  if (m) return literalTranslate("Purchase failed: {{reason}}", { reason: m[1] });
-  m = phrase.match(/^Unlock\s+(.+)\s+for\s+(.+)\?$/i);
-  if (m) return literalTranslate("Unlock {{ship}} for {{cost}}?", { ship: m[1], cost: m[2] });
-  m = phrase.match(/^(.+)\s+selected\.$/i);
-  if (m) return literalTranslate("{{ship}} selected.", { ship: m[1] });
-  m = phrase.match(/^(.+)\s+unlocked\.$/i);
-  if (m) return literalTranslate("{{ship}} unlocked.", { ship: m[1] });
-  m = phrase.match(/^(.+)\s+upgraded to Lv\s+(\d+)\.$/i);
-  if (m) return literalTranslate("{{name}} upgraded to Lv {{level}}.", { name: m[1], level: m[2] });
-  m = phrase.match(/^Achievement unlocked:\s+(.+)$/i);
-  if (m) return literalTranslate("Achievement unlocked: {{name}}", { name: m[1] });
-  m = phrase.match(/^Choose title:\s*([\s\S]+)$/i);
-  if (m) return literalTranslate("Choose title:\n{{titles}}", { titles: m[1] });
-  m = phrase.match(/^Unlocked\s+(.+)$/i);
-  if (m) return literalTranslate("Unlocked {{date}}", { date: m[1] });
-  m = phrase.match(/^Upgrade\s+\((\d+)\)$/i);
-  if (m) return literalTranslate("Upgrade ({{cost}})", { cost: m[1] });
-  m = phrase.match(/^Survive\s*-\s*(.+)$/i);
-  if (m) return literalTranslate("Survive - {{boss}}", { boss: m[1] });
-  m = phrase.match(/^Win:\s*reduce opponent HP to 0 \((.+)\)$/i);
-  if (m) return literalTranslate("Win: reduce opponent HP to 0 ({{hp}})", { hp: m[1] });
-  m = phrase.match(/^Win:\s*reduce duelist HP to 0 \((.+)\)$/i);
-  if (m) return literalTranslate("Win: reduce duelist HP to 0 ({{hp}})", { hp: m[1] });
-  m = phrase.match(/^YOU:\s*(.+)$/i);
-  if (m) return literalTranslate("YOU: {{name}}", { name: m[1] });
-  m = phrase.match(/^OPP:\s*(.+)$/i);
-  if (m) return literalTranslate("OPP: {{name}}", { name: m[1] });
-  return phrase;
-}
-
-function localizeUiText(value) {
-  const raw = String(value == null ? "" : value);
-  if (!raw || currentLanguageCode() === "en") return raw;
-  const lead = (raw.match(/^\s*/) || [""])[0];
-  const tail = (raw.match(/\s*$/) || [""])[0];
-  const core = raw.slice(lead.length, Math.max(lead.length, raw.length - tail.length));
-  const normalized = normalizeI18nPhrase(core);
-  if (!normalized) return raw;
-  let localized = literalTranslate(core.trim());
-  if ((localized === core.trim() || !localized) && normalized !== core.trim()) {
-    localized = literalTranslate(normalized);
-  }
-  if (localized === normalized || localized === core.trim()) localized = localizeDynamicPhrase(normalized);
-  if (localized === normalized || localized === core.trim()) return raw;
-  return `${lead}${localized}${tail}`;
-}
-
-function shouldCaptureEnglishSource(value) {
-  const text = normalizeI18nPhrase(value);
-  if (!text) return false;
-  return /[A-Za-z]/.test(text);
-}
-
-function localizeTextNode(node) {
-  if (!node || node.nodeType !== Node.TEXT_NODE) return;
-  const parent = node.parentElement;
-  if (parent && /^(SCRIPT|STYLE|NOSCRIPT|TEXTAREA)$/i.test(parent.tagName)) return;
-  const current = String(node.nodeValue || "");
-  if (shouldCaptureEnglishSource(current)) I18N_TEXT_NODE_SOURCE.set(node, current);
-  const source = I18N_TEXT_NODE_SOURCE.get(node) || current;
-  const translated = localizeUiText(source);
-  if (translated === current) return;
-  i18nMutationGuard = true;
-  node.nodeValue = translated;
-  i18nMutationGuard = false;
-}
-
-function localizeElementAttributes(el, attrNames = I18N_LOCALIZE_ATTRS) {
-  if (!el || el.nodeType !== Node.ELEMENT_NODE) return;
-  let bag = I18N_ATTR_SOURCE.get(el);
-  if (!bag) {
-    bag = {};
-    I18N_ATTR_SOURCE.set(el, bag);
-  }
-  attrNames.forEach((attr) => {
-    if (!attr || !el.hasAttribute(attr)) return;
-    const current = String(el.getAttribute(attr) || "");
-    if (shouldCaptureEnglishSource(current)) bag[attr] = current;
-    const source = bag[attr] || current;
-    const translated = localizeUiText(source);
-    if (translated === current) return;
-    i18nMutationGuard = true;
-    el.setAttribute(attr, translated);
-    i18nMutationGuard = false;
-  });
-}
-
-function localizeDomLiterals(root = document.body) {
-  if (!root) return;
-  if (root.nodeType === Node.TEXT_NODE) {
-    localizeTextNode(root);
-    return;
-  }
-  if (
-    root.nodeType !== Node.ELEMENT_NODE &&
-    root.nodeType !== Node.DOCUMENT_NODE &&
-    root.nodeType !== Node.DOCUMENT_FRAGMENT_NODE
-  ) return;
-  if (root.nodeType === Node.ELEMENT_NODE) localizeElementAttributes(root);
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
-  let node = walker.currentNode;
-  while (node) {
-    if (node.nodeType === Node.TEXT_NODE) localizeTextNode(node);
-    else if (node.nodeType === Node.ELEMENT_NODE) localizeElementAttributes(node);
-    node = walker.nextNode();
-  }
-}
-
-function ensureI18nMutationObserver() {
-  if (i18nMutationObserver || typeof MutationObserver !== "function" || !document.body) return;
-  i18nMutationObserver = new MutationObserver((mutations) => {
-    if (i18nMutationGuard) return;
-    mutations.forEach((mutation) => {
-      if (mutation.type === "characterData") {
-        localizeTextNode(mutation.target);
-        return;
-      }
-      if (mutation.type === "attributes") {
-        localizeElementAttributes(mutation.target, [mutation.attributeName]);
-        return;
-      }
-      mutation.addedNodes.forEach((added) => {
-        localizeDomLiterals(added);
-      });
-    });
-  });
-  i18nMutationObserver.observe(document.body, {
-    subtree: true,
-    childList: true,
-    characterData: true,
-    attributes: true,
-    attributeFilter: I18N_LOCALIZE_ATTRS,
-  });
-}
-
-function ensureI18nCatalog() {
-  if (i18nCatalogPromise) return i18nCatalogPromise;
-  i18nCatalogPromise = fetch(I18N_LITERAL_CATALOG_URL, { cache: "force-cache" })
-    .then((res) => {
-      if (!res.ok) throw new Error(`catalog_http_${res.status}`);
-      return res.json();
-    })
-    .then((json) => {
-      if (json && typeof json === "object") I18N_LITERALS = json;
-      return true;
-    })
-    .catch((err) => {
-      console.warn("[i18n] literal catalog unavailable", err);
-      return false;
-    })
-    .then((ok) => {
-      ensureI18nMutationObserver();
-      localizeDomLiterals(document.body);
-      if (typeof applyLanguageToUi === "function") applyLanguageToUi();
-      return ok;
-    });
-  return i18nCatalogPromise;
 }
 
 function adConsentChoiceLabel(choice = getAdConsentChoice()) {
@@ -3762,20 +2986,19 @@ function hapticsEnabled() {
 
 function ensureLanguageOptions() {
   if (!settingsLanguageEl) return;
+  if (settingsLanguageEl.options.length === LANGUAGE_OPTIONS.length) return;
   settingsLanguageEl.innerHTML = "";
   LANGUAGE_OPTIONS.forEach((item) => {
     const option = document.createElement("option");
     option.value = item.code;
-    option.textContent = localizeUiText(item.label);
+    option.textContent = item.label;
     settingsLanguageEl.appendChild(option);
   });
 }
 
 function applyLanguageToUi() {
-  void ensureI18nCatalog();
   const lang = normalizeLanguageCode(SAVE.profile.language || "en");
   document.documentElement.lang = lang;
-  document.documentElement.dir = lang === "ar" ? "rtl" : "ltr";
 
   playSurvivalBtn.textContent = t("menu.play_survival");
   playCampaignBtn.textContent = t("menu.continue_campaign");
@@ -3789,7 +3012,7 @@ function applyLanguageToUi() {
   if (menuSubtitlePillEl) menuSubtitlePillEl.textContent = t("brand.subtitle");
   if (guestSyncBannerTextEl) {
     guestSyncBannerTextEl.textContent = progressionRequiresAuth()
-      ? localizeUiText("Guest mode: records reset on reload. Sign in to save progress and join global leaderboard.")
+      ? "Guest mode: records reset on reload. Sign in to save progress and join global leaderboard."
       : t("menu.sync_banner");
   }
   if (menuMissionTipEl) menuMissionTipEl.textContent = t("menu.tip_collect");
@@ -3797,7 +3020,7 @@ function applyLanguageToUi() {
   if (menuTermsLinkEl) menuTermsLinkEl.textContent = t("menu.terms");
   if (sideProgressTipEl) {
     sideProgressTipEl.textContent = progressionRequiresAuth()
-      ? localizeUiText("Tip: Guest runs are temporary. Sign in to keep your records.")
+      ? "Tip: Guest runs are temporary. Sign in to keep your records."
       : t("menu.tip_progress_local");
   }
   menuSettingsBtn.textContent = t("menu.settings");
@@ -3814,9 +3037,9 @@ function applyLanguageToUi() {
   settingsShootSfxLabelEl.textContent = t("settings.shoot_sfx");
   settingsDestroySfxLabelEl.textContent = t("settings.destroy_sfx");
   settingsHapticsLabelEl.textContent = t("settings.haptics");
-  if (settingsDamageNumbersLabelEl) settingsDamageNumbersLabelEl.textContent = localizeUiText("Damage Numbers");
-  if (settingsAdaptiveDifficultyLabelEl) settingsAdaptiveDifficultyLabelEl.textContent = localizeUiText("Adaptive Difficulty");
-  if (settingsFpsLimitLabelEl) settingsFpsLimitLabelEl.textContent = localizeUiText("Mobile FPS Limit");
+  if (settingsDamageNumbersLabelEl) settingsDamageNumbersLabelEl.textContent = "Damage Numbers";
+  if (settingsAdaptiveDifficultyLabelEl) settingsAdaptiveDifficultyLabelEl.textContent = "Adaptive Difficulty";
+  if (settingsFpsLimitLabelEl) settingsFpsLimitLabelEl.textContent = "Mobile FPS Limit";
   settingsFullscreenLabelEl.textContent = t("settings.fullscreen");
   settingsNextTrackBtn.textContent = t("settings.next_track");
   settingsAdTitleEl.textContent = t("settings.ads_title");
@@ -3834,7 +3057,6 @@ function applyLanguageToUi() {
   renderAdConsentSettings();
   setFullscreenButtonLabel();
   renderMissionBoard();
-  localizeDomLiterals(document.body);
 }
 
 function applySettingsUi() {
@@ -3924,7 +3146,7 @@ function currentMenuTrack() {
 }
 
 function updateSettingsTrackLabel() {
-  settingsTrackNameEl.textContent = t("settings.track_current", { name: localizeUiText(currentMenuTrack().name).trim() });
+  settingsTrackNameEl.textContent = t("settings.track_current", { name: currentMenuTrack().name });
 }
 
 function ensureAudioGraph() {
@@ -4507,9 +3729,8 @@ function dailyRewardState() {
 }
 
 function renderDailyRewardPopup() {
-  clearRewardedRetryButton(dailyDoubleBtn);
   const st = dailyRewardState();
-  const canDouble = false;
+  const canDouble = hasRewardedAdapter();
   const ladderRows = DAILY_REWARD_LADDER.map((reward) => {
     const isCurrent = reward.day === st.streakDay;
     const isClaimed = reward.day < st.streakDay && !st.reset;
@@ -4528,13 +3749,7 @@ function renderDailyRewardPopup() {
   }
   dailyClaimBtn.disabled = !st.claimable;
   dailyDoubleBtn.classList.toggle("hidden", !canDouble);
-  dailyDoubleBtn.disabled = true;
-  dailyDoubleBtn.textContent = "Double Reward (Telegram Only)";
-  if (dailyRewardAdStatusEl) {
-    dailyRewardAdStatusEl.classList.remove("hidden");
-    dailyRewardAdStatusEl.textContent =
-      "Bonus doubling is available in Telegram Reward Center Mini App.";
-  }
+  dailyDoubleBtn.disabled = !st.claimable || !canDouble;
 }
 
 function maybeOpenDailyRewardPopup(force = false) {
@@ -4547,22 +3762,13 @@ function maybeOpenDailyRewardPopup(force = false) {
   dailyRewardEl.classList.remove("hidden");
 }
 
-function dailyRewardPreview(mult = 1, st = null) {
-  const stateRef = st || dailyRewardState();
-  const reward = DAILY_REWARD_LADDER.find((d) => d.day === stateRef.streakDay) || DAILY_REWARD_LADDER[0];
-  const streakBonus = 1 + Math.min(0.3, (Math.max(1, stateRef.streakDay) - 1) * 0.04);
-  return {
-    credits: Math.floor(reward.credits * mult * streakBonus),
-    crystals: Math.floor(reward.crystals * mult * streakBonus),
-  };
-}
-
 function grantDailyReward(mult = 1) {
   const st = dailyRewardState();
   if (!st.claimable) return false;
-  const preview = dailyRewardPreview(mult, st);
-  const credits = preview.credits;
-  const crystals = preview.crystals;
+  const reward = DAILY_REWARD_LADDER.find((d) => d.day === st.streakDay) || DAILY_REWARD_LADDER[0];
+  const streakBonus = 1 + Math.min(0.3, (Math.max(1, st.streakDay) - 1) * 0.04);
+  const credits = Math.floor(reward.credits * mult * streakBonus);
+  const crystals = Math.floor(reward.crystals * mult * streakBonus);
   SAVE.profile.credits += credits;
   SAVE.profile.crystals += crystals;
   SAVE.profile.crystalsShadow = Math.max(SAVE.profile.crystalsShadow || 0, SAVE.profile.crystals);
@@ -4751,41 +3957,6 @@ function updateTopBar() {
   topCrystalsEl.textContent = SAVE.profile.crystals;
 }
 
-function updateWalletUI() {
-  updateTopBar();
-  if (state === STATE.HANGAR) renderHangarRewardedActions();
-}
-
-function formatServerRewardSummary(reward = {}) {
-  const credits = Math.max(0, Math.floor(Number(reward.credits || 0)));
-  const crystals = Math.max(0, Math.floor(Number(reward.crystals || 0)));
-  const parts = [];
-  if (credits > 0) parts.push(`+${credits} credits`);
-  if (crystals > 0) parts.push(`+${crystals} crystals`);
-  return parts.join(", ");
-}
-
-function applyServerReward(reward = {}, placement = "unknown") {
-  const credits = Math.max(0, Math.floor(Number(reward.credits || 0)));
-  const crystals = Math.max(0, Math.floor(Number(reward.crystals || 0)));
-  if (credits <= 0 && crystals <= 0) return { credits: 0, crystals: 0, summary: "" };
-
-  SAVE.profile.credits = Math.max(0, Math.floor(Number(SAVE.profile.credits || 0))) + credits;
-  SAVE.profile.crystals = Math.max(0, Math.floor(Number(SAVE.profile.crystals || 0))) + crystals;
-  SAVE.profile.crystalsShadow = Math.max(SAVE.profile.crystalsShadow || 0, SAVE.profile.crystals);
-  SAVE.profile.totalCreditsEarned = Math.max(0, Number(SAVE.profile.totalCreditsEarned || 0)) + credits;
-  SAVE.profile.totalCrystalsEarned = Math.max(0, Number(SAVE.profile.totalCrystalsEarned || 0)) + crystals;
-  appendAdRewardHistoryEntry({ placement, credits, crystals, xp: 0 });
-  reconcileAdRewardLedgerIntegrity();
-  SAVE.profile.updatedAt = nowMs();
-  saveNow();
-  updateWalletUI();
-
-  const summary = formatServerRewardSummary({ credits, crystals });
-  if (summary) showToast(`Reward granted: ${summary}.`);
-  return { credits, crystals, summary };
-}
-
 function isAuthed() {
   return Boolean(CLOUD.enabled && CLOUD.user);
 }
@@ -4816,12 +3987,12 @@ function withDevDetails(message, detail = "") {
 }
 
 function setOnlineHint(message, devDetail = "") {
-  onlineHintEl.textContent = withDevDetails(localizeUiText(message), localizeUiText(devDetail));
+  onlineHintEl.textContent = withDevDetails(message, devDetail);
 }
 
 function showToast(message, durationMs = 2200) {
   if (!toastEl) return;
-  toastEl.textContent = localizeUiText(String(message || ""));
+  toastEl.textContent = String(message || "");
   toastEl.classList.remove("hidden");
   toastEl.classList.add("toast--show");
   if (showToast.timer) clearTimeout(showToast.timer);
@@ -4829,18 +4000,6 @@ function showToast(message, durationMs = 2200) {
     toastEl.classList.remove("toast--show");
     toastEl.classList.add("hidden");
   }, durationMs);
-}
-
-function i18nAlert(message) {
-  window.alert(localizeUiText(message));
-}
-
-function i18nConfirm(message) {
-  return window.confirm(localizeUiText(message));
-}
-
-function i18nPrompt(message, defaultValue = "") {
-  return window.prompt(localizeUiText(message), defaultValue);
 }
 
 function updateGuestSignInReminder(elapsedMs) {
@@ -4968,21 +4127,6 @@ function openInfoOverlay() {
 }
 
 infoBtn.addEventListener("click", openInfoOverlay);
-if (menuRewardBotBtn) {
-  menuRewardBotBtn.addEventListener("click", () => {
-    openTelegramRewardBot();
-  });
-}
-if (menuRewardAccountBtn) {
-  menuRewardAccountBtn.addEventListener("click", () => {
-    if (PORTAL_MODE) {
-      showToast("Account linking is unavailable in portal build.");
-      return;
-    }
-    renderAccountPanel();
-    setState(STATE.ACCOUNT);
-  });
-}
 
 function exitHangarToHome(event) {
   if (event) {
@@ -5071,28 +4215,28 @@ leaderboardListEl.addEventListener("click", (event) => {
 buy100Btn.addEventListener("click", () => {
   startCrystalPurchase("crystals_100").catch((err) => {
     console.warn("[PAY] failed", err);
-    i18nAlert(`Purchase failed: ${err && err.message ? err.message : "unknown error"}`);
+    alert(`Purchase failed: ${err && err.message ? err.message : "unknown error"}`);
   });
 });
 
 buy550Btn.addEventListener("click", () => {
   startCrystalPurchase("crystals_550").catch((err) => {
     console.warn("[PAY] failed", err);
-    i18nAlert(`Purchase failed: ${err && err.message ? err.message : "unknown error"}`);
+    alert(`Purchase failed: ${err && err.message ? err.message : "unknown error"}`);
   });
 });
 
 buyCredits10kBtn.addEventListener("click", () => {
   startCrystalPurchase("credits_10000").catch((err) => {
     console.warn("[PAY] failed", err);
-    i18nAlert(`Purchase failed: ${err && err.message ? err.message : "unknown error"}`);
+    alert(`Purchase failed: ${err && err.message ? err.message : "unknown error"}`);
   });
 });
 
 buyCredits65kBtn.addEventListener("click", () => {
   startCrystalPurchase("credits_65000").catch((err) => {
     console.warn("[PAY] failed", err);
-    i18nAlert(`Purchase failed: ${err && err.message ? err.message : "unknown error"}`);
+    alert(`Purchase failed: ${err && err.message ? err.message : "unknown error"}`);
   });
 });
 
@@ -5211,7 +4355,7 @@ menuSettingsBtn.addEventListener("click", () => {
 
 menuResetBtn.addEventListener("click", () => {
   setMenuOpen(false);
-  const ok = i18nConfirm("Reset ALL local progress (ships, upgrades, leaderboard)? This cannot be undone.");
+  const ok = confirm("Reset ALL local progress (ships, upgrades, leaderboard)? This cannot be undone.");
   if (!ok) return;
   try {
     localStorage.removeItem(SAVE_KEY);
@@ -5495,7 +4639,65 @@ dailyClaimBtn.addEventListener("click", () => {
 });
 
 dailyDoubleBtn.addEventListener("click", async () => {
-  openTelegramRewardBot();
+  if (ADS_DISABLED) return;
+  const st = dailyRewardState();
+  if (!st.claimable) return;
+  const status = adRewardStatus();
+  if (status.remaining <= 0) {
+    showToast(`Daily rewarded cap reached (${ADS.dailyCap}/${ADS.dailyCap}).`);
+    renderDailyRewardPopup();
+    return;
+  }
+  if (status.sessionRemaining <= 0) {
+    showToast(`Session rewarded cap reached (${ADS.sessionCap}/${ADS.sessionCap}).`);
+    renderDailyRewardPopup();
+    return;
+  }
+  if (status.waitMs > 0) {
+    showToast(`Next rewarded ad in ${formatCooldown(status.waitMs)}.`);
+    renderDailyRewardPopup();
+    return;
+  }
+  if (adIntegrityBlocked()) {
+    showToast("No ad available, try later.");
+    renderDailyRewardPopup();
+    return;
+  }
+  const provider = getRewardedProvider();
+  if (!provider || !provider.isAvailable()) {
+    showToast("No ad available, try later.");
+    renderDailyRewardPopup();
+    return;
+  }
+  dailyDoubleBtn.disabled = true;
+  dailyDoubleBtn.textContent = "Starting Ad...";
+  try {
+    const adResult = await requestRewardedAdCompletion("daily_double", (remaining) => {
+      dailyDoubleBtn.textContent = `Ad: ${remaining}s`;
+    });
+    if (!adResult || !adResult.completed) {
+      const reason = String((adResult && adResult.reason) || "");
+      if (reason === "returned_too_fast" || reason === "no_background_transition" || reason === "short_watch") {
+        showToast(`Ad too short. Watch at least ${Math.ceil(AD_CONTINUE_MIN_AWAY_MS / 1000)}s.`);
+      } else if (reason === "popup_blocked" || reason === "open_not_detected") {
+        showToast("Allow popups for this site.");
+      } else {
+        showToast("Ad not completed. Try again.");
+      }
+      return;
+    }
+    if (!consumeAdRewardSlot()) {
+      showToast("Rewarded ad unavailable. Try later.");
+      return;
+    }
+    SAVE.profile.totalAdsClaimed = Number(SAVE.profile.totalAdsClaimed || 0) + 1;
+    grantDailyReward(2);
+  } catch {
+    showToast("No ad available, try later.");
+  } finally {
+    dailyDoubleBtn.textContent = "Double Reward (Watch Ad)";
+    renderDailyRewardPopup();
+  }
 });
 
 if (missionRerollBtn) {
@@ -5529,9 +4731,9 @@ tierT3Btn.addEventListener("click", () => {
 pilotPillEl.addEventListener("click", async () => {
   const titles = Array.isArray(SAVE.profile.unlockedTitles) ? SAVE.profile.unlockedTitles.slice() : ["Cadet"];
   if (titles.length > 1) {
-    const changeTitle = i18nConfirm("OK = Change title, Cancel = Change username");
+    const changeTitle = confirm("OK = Change title, Cancel = Change username");
     if (changeTitle) {
-      const raw = i18nPrompt(`Choose title:\n${titles.join(", ")}`, SAVE.profile.selectedTitle || titles[0]);
+      const raw = prompt(`Choose title:\n${titles.join(", ")}`, SAVE.profile.selectedTitle || titles[0]);
       if (!raw) return;
       const nextTitle = titles.find((title) => title.toLowerCase() === String(raw).trim().toLowerCase());
       if (!nextTitle) {
@@ -5546,11 +4748,11 @@ pilotPillEl.addEventListener("click", async () => {
       return;
     }
   }
-  const next = i18nPrompt("Username (3-20 chars, letters/numbers/_):", SAVE.profile.name);
+  const next = prompt("Username (3-20 chars, letters/numbers/_):", SAVE.profile.name);
   if (!next) return;
   const cleaned = cleanUsernameInput(next);
   if (!isValidUsername(cleaned)) {
-    i18nAlert("Username must be 3-20 characters and use only letters, numbers, or underscore.");
+    alert("Username must be 3-20 characters and use only letters, numbers, or underscore.");
     return;
   }
 
@@ -5558,8 +4760,8 @@ pilotPillEl.addEventListener("click", async () => {
   if (isAuthed()) {
     const claim = await claimUniqueUsername(cleaned);
     if (!claim.ok) {
-      if (claim.code === "taken") i18nAlert("That username is already taken.");
-      else i18nAlert("Could not update username right now.");
+      if (claim.code === "taken") alert("That username is already taken.");
+      else alert("Could not update username right now.");
       return;
     }
   } else {
@@ -5675,34 +4877,66 @@ function updateGame3DFrame() {
 }
 
 function renderHangarRewardedActions() {
-  clearRewardedRetryButton(hangarAdCreditsBtn);
-  clearRewardedRetryButton(hangarAdCrystalsBtn);
-  hangarAdCreditsBtn.classList.remove("hidden");
-  hangarAdCrystalsBtn.classList.remove("hidden");
-  hangarAdCreditsBtn.textContent = "Open Reward Bot";
-  hangarAdCrystalsBtn.textContent = "Open Account Link";
-  hangarAdCreditsBtn.onclick = null;
-  hangarAdCrystalsBtn.onclick = null;
-  hangarAdCreditsBtn.title = "";
-  hangarAdCrystalsBtn.title = "";
-  hangarAdCreditsBtn.disabled = false;
-  hangarAdCrystalsBtn.disabled = false;
-  if (hangarAdStatusEl) {
-    hangarAdStatusEl.textContent =
-      "To earn extra rewards, open Telegram Reward Center, watch tasks there, and rewards will sync here.";
+  if (ADS_DISABLED) {
+    hangarAdCreditsBtn.classList.add("hidden");
+    hangarAdCrystalsBtn.classList.add("hidden");
+    hangarAdCreditsBtn.disabled = true;
+    hangarAdCrystalsBtn.disabled = true;
+    hangarAdCreditsBtn.onclick = null;
+    hangarAdCrystalsBtn.onclick = null;
+    return;
   }
 
-  hangarAdCreditsBtn.onclick = () => {
-    openTelegramRewardBot();
+  hangarAdCreditsBtn.classList.remove("hidden");
+  hangarAdCrystalsBtn.classList.remove("hidden");
+
+  const providerReady = hasRewardedAdapter();
+  const status = adRewardStatus();
+  const lockReason =
+    !providerReady
+      ? "Rewarded ads unavailable."
+      : status.remaining <= 0
+      ? `Daily cap reached (${ADS.dailyCap}/${ADS.dailyCap}).`
+      : status.sessionRemaining <= 0
+      ? `Session cap reached (${ADS.sessionCap}/${ADS.sessionCap}).`
+      : status.waitMs > 0
+      ? `Cooldown: ${formatCooldown(status.waitMs)}`
+      : "";
+
+  const setBtn = (btn, label) => {
+    btn.textContent = label;
+    btn.disabled = Boolean(lockReason);
+    btn.title = lockReason;
+    btn.onclick = null;
   };
 
-  hangarAdCrystalsBtn.onclick = () => {
-    if (PORTAL_MODE) {
-      showToast("Account linking is unavailable in portal build.");
-      return;
-    }
-    renderAccountPanel();
-    setState(STATE.ACCOUNT);
+  setBtn(hangarAdCreditsBtn, "Watch Ad → +420 Credits");
+  setBtn(hangarAdCrystalsBtn, "Watch Ad → +2 Crystals (+120 Credits)");
+  if (lockReason) {
+    return;
+  }
+
+  console.info("rewarded_shown", { placement: "hangar" });
+  trackEvent("rewarded_shown", { placement: "hangar" });
+
+  hangarAdCreditsBtn.onclick = async () => {
+    await tryRewardedPlacement({
+      placement: "hangar_credits",
+      cfg: AD_REWARDS.hangar_credits,
+      buttonEl: hangarAdCreditsBtn,
+      textEl: null,
+    });
+    renderHangarRewardedActions();
+  };
+
+  hangarAdCrystalsBtn.onclick = async () => {
+    await tryRewardedPlacement({
+      placement: "hangar_crystals",
+      cfg: AD_REWARDS.hangar_crystals,
+      buttonEl: hangarAdCrystalsBtn,
+      textEl: null,
+    });
+    renderHangarRewardedActions();
   };
 }
 
@@ -5881,22 +5115,14 @@ function renderHangar() {
   shipPickerEl.innerHTML = "";
   SHIPS.forEach((s) => {
     const st = ensureShipState(s.id);
-    const referralLocked = !st.owned && String(s.unlockMethod || "") === "referral";
-    const referralGoal = Math.max(1, Math.floor(Number(s.referralTarget || REFERRAL_TARGET)));
     const btn = document.createElement("button");
     btn.className = "shipBtn";
     if (s.id === selectedShip.id) btn.classList.add("shipBtn--active");
     if (!st.owned) btn.classList.add("shipBtn--locked");
     btn.textContent = st.owned
       ? s.name
-      : referralLocked
-      ? `${s.name} · Referral x${formatInt(referralGoal)}`
       : `${s.name} · ${s.priceCrystals ? `${s.priceCrystals}C` : `${s.priceCredits} cr`}`;
-    btn.title = st.owned
-      ? `${s.name} (${s.rarity})`
-      : referralLocked
-      ? `${s.name} (Locked - invite ${formatInt(referralGoal)} pilots with referral link)`
-      : `${s.name} (Locked - ${s.priceCrystals ? s.priceCrystals + " crystals" : s.priceCredits + " credits"})`;
+    btn.title = st.owned ? `${s.name} (${s.rarity})` : `${s.name} (Locked - ${s.priceCrystals ? s.priceCrystals + " crystals" : s.priceCredits + " credits"})`;
     btn.addEventListener("click", () => {
       // Allow selecting owned ships freely.
       if (st.owned) {
@@ -5916,14 +5142,8 @@ function renderHangar() {
         saveNow();
       }
 
-      if (referralLocked) {
-        showToast(`Unlock ${s.name} by inviting ${formatInt(referralGoal)} pilots with your referral link.`);
-        renderHangar();
-        return;
-      }
-
       const costText = s.priceCrystals ? `${s.priceCrystals} crystals` : `${s.priceCredits} credits`;
-      const ok = i18nConfirm(`Unlock ${s.name} for ${costText}?`);
+      const ok = confirm(`Unlock ${s.name} for ${costText}?`);
       if (!ok) {
         renderHangar();
         return;
@@ -6312,7 +5532,7 @@ async function startCrystalPurchase(packId) {
   }
 
   if (!isHosted()) {
-    i18nAlert(withDevDetails("Store is unavailable in this build.", "Requires http(s) hosting."));
+    alert(withDevDetails("Store is unavailable in this build.", "Requires http(s) hosting."));
     return;
   }
 
@@ -6610,7 +5830,7 @@ async function ensureUniqueUsernameForAccount(interactive = false) {
     }
 
     while (true) {
-      const value = i18nPrompt(
+      const value = prompt(
         "Choose a unique username (3-20 chars, letters/numbers/_ only). This name appears in leaderboard.",
         candidate
       );
@@ -6620,16 +5840,16 @@ async function ensureUniqueUsernameForAccount(interactive = false) {
       }
       candidate = cleanUsernameInput(value);
       if (!isValidUsername(candidate)) {
-        i18nAlert("Username must be 3-20 characters and use only letters, numbers, or underscore.");
+        alert("Username must be 3-20 characters and use only letters, numbers, or underscore.");
         continue;
       }
 
       const result = await claimUniqueUsername(candidate);
       if (result.ok) return true;
       if (result.code === "taken") {
-        i18nAlert("That username is already taken. Please choose another.");
+        alert("That username is already taken. Please choose another.");
       } else {
-        i18nAlert("Could not save username right now. Please try again.");
+        alert("Could not save username right now. Please try again.");
       }
     }
   })()
@@ -6718,10 +5938,6 @@ function computeLocalSnapshot() {
     unlockedTitles: Array.isArray(SAVE.profile.unlockedTitles) ? SAVE.profile.unlockedTitles : ["Cadet"],
     achievementUnlocks: SAVE.profile.achievementUnlocks || {},
     abilityUses: SAVE.profile.abilityUses || {},
-    referredByUid: String(SAVE.profile.referredByUid || ""),
-    referredByCode: String(SAVE.profile.referredByCode || ""),
-    referredAt: Number(SAVE.profile.referredAt || 0),
-    referralRewardUnlockedAt: Number(SAVE.profile.referralRewardUnlockedAt || 0),
     updatedAt: nowMs(),
   };
   return {
@@ -7011,7 +6227,7 @@ async function chooseCloudSyncStrategyOnSignIn() {
     return "cloud";
   }
 
-  const keepLocal = i18nConfirm(
+  const keepLocal = window.confirm(
     "Choose sync option:\nOK = Keep Local Progress (upload local -> cloud)\nCancel = Use Cloud Progress (replace local)"
   );
   const choice = keepLocal ? "local" : "cloud";
@@ -7048,12 +6264,6 @@ async function cloudOnAuthChanged() {
     } catch (err) {
       console.warn("[CLOUD] username setup failed", err);
     }
-    try {
-      await claimPendingReferralCode();
-    } catch (err) {
-      console.warn("[REFERRAL] claim failed", err);
-    }
-    void refreshReferralStatus(true);
     updateTopBar();
     renderHangar();
     if (state === STATE.ACCOUNT) renderAccountPanel();
@@ -7068,7 +6278,6 @@ async function cloudOnAuthChanged() {
     }
     SESSION.guestPlayMs = 0;
     SESSION.nextGuestReminderAtMs = GUEST_REMINDER_INTERVAL_MS;
-    void refreshReferralStatus(true);
     if (state === STATE.ACCOUNT) renderAccountPanel();
   }
   updateAuthUi();
@@ -7934,6 +7143,9 @@ const run = {
     maxUses: 0,
     description: "",
   },
+  canAdContinue: false,
+  continueUsed: false,
+  reviveShield: 0,
 };
 
 const player = {
@@ -7963,24 +7175,270 @@ const player = {
 
 const PLAYER_BOUND_PAD = 6;
 
-const REWARDED_RETRY_BTN_CLASS = "rewardedRetryBtn";
+const AD_REWARDS = {
+  survival: { seconds: 20, credits: 320, crystals: 0, xp: 80 },
+  campaign: { seconds: 35, credits: 440, crystals: 0, xp: 120 },
+  duel: { seconds: 45, credits: 560, crystals: 0, xp: 140 },
+  hangar_credits: { seconds: 20, credits: 420, crystals: 0, xp: 0 },
+  hangar_crystals: { seconds: 22, credits: 120, crystals: 2, xp: 0 },
+};
 
-function formatCooldown(waitMs) {
-  const sec = Math.max(0, Math.ceil(waitMs / 1000));
-  const minutes = Math.floor(sec / 60);
-  const seconds = sec % 60;
-  const mm = String(minutes).padStart(2, "0");
-  const ss = String(seconds).padStart(2, "0");
-  return `${mm}:${ss}`;
+const AD_CONTINUE_MIN_AWAY_MS = 10000;
+const AD_CONTINUE_COOLDOWN_MS = 90000;
+const AD_SERVER_DAY_CAP = 15;
+
+function adRewardDayKey() {
+  return localDayKey();
 }
 
-function clearRewardedRetryButton(anchorEl = null) {
-  const host =
-    anchorEl && anchorEl.parentElement
-      ? anchorEl.parentElement
-      : document;
-  const existing = host.querySelector(`.${REWARDED_RETRY_BTN_CLASS}`);
-  if (existing) existing.remove();
+function ensureAdRewardDay() {
+  const today = adRewardDayKey();
+  if (SAVE.profile.adRewardsDay !== today) {
+    SAVE.profile.adRewardsDay = today;
+    SAVE.profile.adRewardsClaimed = 0;
+  }
+}
+
+function ensureAdServerDay() {
+  const today = localDayKey();
+  if (SAVE.profile.adServerClaimsDay !== today) {
+    SAVE.profile.adServerClaimsDay = today;
+    SAVE.profile.adServerClaims = 0;
+  }
+}
+
+function getRewardedProvider() {
+  if (window.rewardedAdProvider && typeof window.rewardedAdProvider.isAvailable === "function") {
+    return window.rewardedAdProvider;
+  }
+  return {
+    isAvailable: () => Boolean(ADS.mockEnabled),
+    showRewardedAd: async () => {
+      if (!ADS.mockEnabled) return { completed: false, reason: "unavailable" };
+      await runMockRewardedAd();
+      return { completed: true, reason: "mock_completed" };
+    },
+  };
+}
+
+function adIntegrityBlocked() {
+  if (REWARD_STATE && typeof REWARD_STATE.integrityClockBlocked === "function") {
+    return REWARD_STATE.integrityClockBlocked(SAVE.profile, nowMs);
+  }
+  const now = nowMs();
+  const lastIntegrity = Number(SAVE.profile.adIntegrityLastAt || 0);
+  if (lastIntegrity && now + 30000 < lastIntegrity) {
+    return true;
+  }
+  SAVE.profile.adIntegrityLastAt = now;
+  return false;
+}
+
+function adRewardsUnlimited() {
+  if (ADS.unlimitedRewards) {
+    LOG.warn("ads_unlimited_disabled", { configured: true });
+  }
+  return false;
+}
+
+function adRewardStatus() {
+  if (REWARD_STATE && typeof REWARD_STATE.status === "function") {
+    return REWARD_STATE.status({
+      profile: SAVE.profile,
+      session: SESSION,
+      caps: {
+        dailyCap: ADS.dailyCap,
+        sessionCap: ADS.sessionCap,
+        cooldownMs: ADS.cooldownMs,
+      },
+      nowMs,
+      dayKey: adRewardDayKey,
+      onDayReset: () => {
+        SAVE.profile.adRewardsClaimed = 0;
+        SAVE.profile.adServerClaims = 0;
+      },
+    });
+  }
+  ensureAdRewardDay();
+  const claimed = Math.max(0, Math.floor(Number(SAVE.profile.adRewardsClaimed || 0)));
+  const sessionClaimed = Math.max(0, Math.floor(Number(SESSION.rewardedAdsClaimed || 0)));
+  const remaining = Math.max(0, ADS.dailyCap - claimed);
+  const sessionRemaining = Math.max(0, ADS.sessionCap - sessionClaimed);
+  const cooldownUntil = Number(SAVE.profile.adRewardLastAt || 0) + ADS.cooldownMs;
+  const waitMs = Math.max(0, cooldownUntil - Date.now());
+  return { claimed, remaining, waitMs, sessionClaimed, sessionRemaining };
+}
+
+function formatCooldown(waitMs) {
+  if (REWARD_STATE && typeof REWARD_STATE.formatCooldown === "function") {
+    return REWARD_STATE.formatCooldown(waitMs);
+  }
+  const sec = Math.max(1, Math.ceil(waitMs / 1000));
+  if (sec < 60) return `${sec}s`;
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return s ? `${m}m ${s}s` : `${m}m`;
+}
+
+function consumeAdRewardSlot() {
+  const unlimited = adRewardsUnlimited();
+  if (REWARD_STATE && typeof REWARD_STATE.consume === "function") {
+    const result = REWARD_STATE.consume({
+      profile: SAVE.profile,
+      session: SESSION,
+      caps: {
+        dailyCap: ADS.dailyCap,
+        sessionCap: ADS.sessionCap,
+        cooldownMs: ADS.cooldownMs,
+      },
+      nowMs,
+      dayKey: adRewardDayKey,
+      unlimited,
+    });
+    if (!result.ok) return false;
+    SAVE.profile.updatedAt = nowMs();
+    saveNow();
+    return true;
+  }
+  if (unlimited) {
+    SAVE.profile.updatedAt = nowMs();
+    saveNow();
+    return true;
+  }
+  const status = adRewardStatus();
+  if (status.remaining <= 0 || status.waitMs > 0 || status.sessionRemaining <= 0) return false;
+  SAVE.profile.adRewardsClaimed = status.claimed + 1;
+  SAVE.profile.adRewardLastAt = nowMs();
+  SESSION.rewardedAdsClaimed = status.sessionClaimed + 1;
+  SAVE.profile.updatedAt = nowMs();
+  saveNow();
+  return true;
+}
+
+function hasRewardedAdapter() {
+  const provider = getRewardedProvider();
+  return Boolean(provider && provider.isAvailable && provider.isAvailable());
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function runMockRewardedAd(onTick) {
+  let remaining = ADS.mockSeconds;
+  while (remaining > 0) {
+    if (typeof onTick === "function") onTick(remaining);
+    await delay(1000);
+    remaining -= 1;
+  }
+}
+
+async function requestRewardedAdCompletion(modeKey, onTick) {
+  const provider = getRewardedProvider();
+  if (provider && provider.isAvailable()) {
+    console.info("rewarded_requested", { placement: modeKey });
+    trackEvent("rewarded_requested", { placement: modeKey });
+    const result = await provider.showRewardedAd({ placement: modeKey, onTick });
+    const completed = Boolean(result && result.completed);
+    const reason = (result && result.reason) || (completed ? "completed" : "not_completed");
+    if (completed) {
+      console.info("rewarded_completed", { placement: modeKey });
+      trackEvent("rewarded_completed", { placement: modeKey });
+    } else {
+      console.info("rewarded_failed", { placement: modeKey, reason });
+      trackEvent("rewarded_failed", { placement: modeKey, reason });
+    }
+    return {
+      completed,
+      reason,
+      awayMs: Math.max(0, Math.floor(Number(result && result.awayMs || 0))),
+    };
+  }
+
+  console.info("rewarded_failed", { placement: modeKey, reason: "provider_unavailable" });
+  trackEvent("rewarded_failed", { placement: modeKey, reason: "provider_unavailable" });
+  return { completed: false, reason: "provider_unavailable", awayMs: 0 };
+}
+
+async function authBearerToken() {
+  try {
+    cloudInit();
+    if (!CLOUD.enabled || !CLOUD.user) return "";
+    return await CLOUD.user.getIdToken();
+  } catch {
+    return "";
+  }
+}
+
+async function requestRewardClaimToken(placement, rewardCfg) {
+  if (!FLAGS.isEnabled("server_reward_claim_v1", true)) return { ok: false, reason: "feature_disabled" };
+  try {
+    const idToken = await authBearerToken();
+    const headers = {
+      "Content-Type": "application/json",
+    };
+    if (idToken) headers.Authorization = `Bearer ${idToken}`;
+
+    const res = await fetch(`${paymentsApiBase()}/api/rewards/token`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        placement,
+        reward: {
+          credits: Math.max(0, Math.floor(Number(rewardCfg && rewardCfg.credits || 0))),
+          crystals: Math.max(0, Math.floor(Number(rewardCfg && rewardCfg.crystals || 0))),
+          xp: Math.max(0, Math.floor(Number(rewardCfg && rewardCfg.xp || 0))),
+        },
+      }),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      return { ok: false, reason: `token_http_${res.status}`, detail: errText };
+    }
+    const data = await res.json();
+    if (!data || !data.token) return { ok: false, reason: "token_missing" };
+    return { ok: true, token: data.token, ttlMs: Number(data.ttlMs || 0), guest: Boolean(data.guest) };
+  } catch (err) {
+    return { ok: false, reason: String((err && err.message) || "token_failed") };
+  }
+}
+
+async function claimRewardServer(token, placement, rewardCfg, awayMs) {
+  if (!FLAGS.isEnabled("server_reward_claim_v1", true)) return { ok: false, reason: "feature_disabled" };
+  if (!token) return { ok: false, reason: "token_required" };
+  try {
+    const idToken = await authBearerToken();
+    const headers = {
+      "Content-Type": "application/json",
+    };
+    if (idToken) headers.Authorization = `Bearer ${idToken}`;
+
+    const res = await fetch(`${paymentsApiBase()}/api/rewards/claim`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        token,
+        placement,
+        awayMs: Math.max(0, Math.floor(Number(awayMs || 0))),
+        reward: {
+          credits: Math.max(0, Math.floor(Number(rewardCfg && rewardCfg.credits || 0))),
+          crystals: Math.max(0, Math.floor(Number(rewardCfg && rewardCfg.crystals || 0))),
+          xp: Math.max(0, Math.floor(Number(rewardCfg && rewardCfg.xp || 0))),
+        },
+      }),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) {
+      return {
+        ok: false,
+        reason: (data && data.error) || `claim_http_${res.status}`,
+        status: res.status,
+      };
+    }
+    return { ok: true, data: data || {} };
+  } catch (err) {
+    return { ok: false, reason: String((err && err.message) || "claim_failed") };
+  }
 }
 
 const ENEMY_TYPES = {
@@ -8134,6 +7592,9 @@ function resetRun(mode) {
   run.hitFlash = 0;
   run.kills = 0;
   run.runUpgrades = {};
+  run.canAdContinue = mode !== MODE.DUEL;
+  run.continueUsed = false;
+  run.reviveShield = 0;
   run.duel = {
     kind: "ai",
     roomCode: "",
@@ -8775,6 +8236,286 @@ function endRun(reason) {
 
   saveNow();
   setState(STATE.OVER);
+  renderAdReward(reason);
+}
+
+async function tryRewardedPlacement({ placement, cfg, buttonEl, textEl, markClaimed = false, onGranted = null }) {
+  if (ADS_DISABLED) return false;
+  const status = adRewardStatus();
+  if (status.remaining <= 0) {
+    console.info("rewarded_dailycap_blocked", { placement, cap: ADS.dailyCap });
+    trackEvent("rewarded_dailycap_blocked", { placement, cap: ADS.dailyCap });
+    if (textEl) textEl.textContent = `Daily reward limit reached (${ADS.dailyCap}/${ADS.dailyCap}).`;
+    if (buttonEl) {
+      buttonEl.disabled = true;
+      buttonEl.textContent = "Daily Cap";
+    }
+    return false;
+  }
+  if (status.sessionRemaining <= 0) {
+    if (textEl) textEl.textContent = `Session cap reached (${ADS.sessionCap}/${ADS.sessionCap}).`;
+    if (buttonEl) {
+      buttonEl.disabled = true;
+      buttonEl.textContent = "Session Cap";
+    }
+    return false;
+  }
+  if (status.waitMs > 0) {
+    console.info("rewarded_cooldown_blocked", { placement, wait_ms: status.waitMs });
+    trackEvent("rewarded_cooldown_blocked", { placement, wait_ms: status.waitMs });
+    if (textEl) textEl.textContent = `Next reward available in ${formatCooldown(status.waitMs)}.`;
+    if (buttonEl) {
+      buttonEl.disabled = true;
+      buttonEl.textContent = "Cooldown";
+    }
+    return false;
+  }
+  if (adIntegrityBlocked()) {
+    if (textEl) textEl.textContent = "Rewarded ads are temporarily blocked due to clock mismatch.";
+    if (buttonEl) {
+      buttonEl.disabled = true;
+      buttonEl.textContent = "Blocked";
+    }
+    return false;
+  }
+
+  const tokenResult = await requestRewardClaimToken(placement, cfg);
+  if (!tokenResult.ok) {
+    LOG.warn("reward_claim_token_failed", { placement, reason: tokenResult.reason });
+  }
+
+  if (buttonEl) {
+    buttonEl.disabled = true;
+    buttonEl.textContent = "Starting Ad...";
+  }
+
+  const adStartedAt = Date.now();
+  const adResult = await requestRewardedAdCompletion(placement, (remaining) => {
+    if (buttonEl) buttonEl.textContent = `Ad: ${remaining}s`;
+  });
+  const awayMs = Math.max(0, Math.floor(Number((adResult && adResult.awayMs) || (Date.now() - adStartedAt))));
+  const minAwaySec = Math.ceil(AD_CONTINUE_MIN_AWAY_MS / 1000);
+  if (!adResult || !adResult.completed) {
+    const reason = String((adResult && adResult.reason) || "");
+    if (buttonEl) {
+      buttonEl.disabled = false;
+      buttonEl.textContent = "Watch Ad";
+    }
+    if (reason === "returned_too_fast" || reason === "no_background_transition" || reason === "short_watch") {
+      if (textEl) textEl.textContent = `Stay on ad page for at least ${minAwaySec}s, then come back.`;
+      showToast(`Ad too short. Watch at least ${minAwaySec}s.`);
+      return false;
+    }
+    if (reason === "popup_blocked" || reason === "open_not_detected") {
+      if (textEl) textEl.textContent = "Ad popup was blocked. Allow popups and try again.";
+      showToast("Allow popups for this site.");
+      return false;
+    }
+    if (textEl) textEl.textContent = "Ad not completed. Try again.";
+    showToast("Ad not completed. Try again.");
+    return false;
+  }
+  if (awayMs < AD_CONTINUE_MIN_AWAY_MS) {
+    if (buttonEl) {
+      buttonEl.disabled = false;
+      buttonEl.textContent = "Watch Ad";
+    }
+    if (textEl) textEl.textContent = `Stay on ad page for at least ${minAwaySec}s, then come back.`;
+    showToast(`Ad too short. Watch at least ${minAwaySec}s.`);
+    return false;
+  }
+
+  if (!consumeAdRewardSlot()) {
+    if (textEl) textEl.textContent = "Reward slot unavailable. Try again later.";
+    if (buttonEl) {
+      buttonEl.disabled = true;
+      buttonEl.textContent = "Unavailable";
+    }
+    return false;
+  }
+
+  let rewardCfg = { ...(cfg || {}) };
+  if (tokenResult.ok && tokenResult.token) {
+    ensureAdServerDay();
+    const claimResult = await claimRewardServer(tokenResult.token, placement, cfg, awayMs);
+    if (!claimResult.ok) {
+      LOG.warn("reward_claim_server_failed", { placement, reason: claimResult.reason, status: claimResult.status || 0 });
+      if (claimResult.status === 429 || claimResult.status === 403) {
+        if (textEl) textEl.textContent = "Reward blocked by integrity checks.";
+        if (buttonEl) {
+          buttonEl.disabled = true;
+          buttonEl.textContent = "Blocked";
+        }
+        return false;
+      }
+    } else if (claimResult.data && claimResult.data.reward) {
+      rewardCfg = {
+        ...rewardCfg,
+        ...claimResult.data.reward,
+      };
+      SAVE.profile.adServerClaims = Number(SAVE.profile.adServerClaims || 0) + 1;
+    }
+  }
+
+  const rewardCredits = Math.max(0, Math.floor(Number(rewardCfg && rewardCfg.credits || 0)));
+  const rewardCrystals = Math.max(0, Math.floor(Number(rewardCfg && rewardCfg.crystals || 0)));
+  const rewardXp = Math.max(0, Math.floor(Number(rewardCfg && rewardCfg.xp || 0)));
+  const hasRewardPayload = rewardCredits > 0 || rewardCrystals > 0 || rewardXp > 0;
+  const granted = hasRewardPayload
+    ? grantAdReward({ credits: rewardCredits, crystals: rewardCrystals, xp: rewardXp }, placement)
+    : { ok: true, summary: "continue granted" };
+  if (!granted || !granted.ok) return false;
+  if (typeof onGranted === "function") {
+    const ok = await onGranted();
+    if (ok === false) return false;
+  }
+  if (markClaimed) run.adRewardClaimed = true;
+  if (buttonEl) {
+    buttonEl.disabled = true;
+    buttonEl.textContent = "Reward Granted";
+  }
+  if (textEl) {
+    const next = adRewardStatus();
+    textEl.textContent = hasRewardPayload
+      ? `Reward granted: ${granted.summary}. ${next.remaining}/${ADS.dailyCap} remaining today.`
+      : `Continue granted. ${next.remaining}/${ADS.dailyCap} remaining today.`;
+  }
+  if (hasRewardPayload) showToast(`Reward granted: ${granted.summary}`);
+  return true;
+}
+
+function renderAdReward(reason) {
+  if (!adRewardBoxEl || !adRewardBtn || !adRewardTextEl) return;
+  if (ADS_DISABLED) {
+    adRewardBoxEl.classList.add("hidden");
+    return;
+  }
+  const modeKey = run.mode === MODE.SURVIVAL ? "survival" : run.mode === MODE.CAMPAIGN ? "campaign" : "duel";
+  const cfg = AD_REWARDS[modeKey];
+  const status = adRewardStatus();
+  const canContinue =
+    reason === "dead" &&
+    run.mode !== MODE.DUEL &&
+    Boolean(run.canAdContinue) &&
+    !Boolean(run.continueUsed) &&
+    hasRewardedAdapter();
+
+  adRewardBoxEl.classList.remove("hidden");
+  adRewardBtn.onclick = null;
+  adRewardBtn.disabled = true;
+  adRewardBtn.textContent = "Watch Ad";
+  adRewardTextEl.textContent = `Watch an optional ad for +${cfg.credits} credits, +${cfg.crystals} crystals, +${cfg.xp} xp.`;
+
+  if (canContinue) {
+    adRewardBtn.disabled = false;
+    adRewardBtn.textContent = "Watch Ad → Continue";
+    adRewardTextEl.textContent = "Watch a rewarded ad to continue this run once.";
+    adRewardBtn.onclick = async () => {
+      const ok = await tryRewardedPlacement({
+        placement: `${modeKey}_continue`,
+        cfg: { credits: 0, crystals: 0, xp: 0 },
+        buttonEl: adRewardBtn,
+        textEl: adRewardTextEl,
+        markClaimed: false,
+        onGranted: () => reviveRunAfterAd(),
+      });
+      if (!ok) return;
+    };
+    return;
+  }
+
+  if (run.adRewardClaimed) {
+    adRewardBtn.disabled = true;
+    adRewardBtn.textContent = "Claimed";
+    return;
+  }
+  if (!hasRewardedAdapter()) {
+    adRewardTextEl.textContent = "Rewarded ads are currently unavailable.";
+    return;
+  }
+  if (status.remaining <= 0) {
+    adRewardTextEl.textContent = `Daily reward limit reached (${ADS.dailyCap}/${ADS.dailyCap}). Try again tomorrow.`;
+    return;
+  }
+  if (status.sessionRemaining <= 0) {
+    adRewardTextEl.textContent = `Session cap reached (${ADS.sessionCap}/${ADS.sessionCap}).`;
+    return;
+  }
+  if (status.waitMs > 0) {
+    adRewardTextEl.textContent = `Next reward available in ${formatCooldown(status.waitMs)}.`;
+    adRewardBtn.textContent = "Cooldown";
+    return;
+  }
+
+  adRewardBtn.disabled = false;
+  adRewardBtn.textContent = "Watch Ad";
+  adRewardTextEl.textContent =
+    `Watch an optional ad for +${cfg.credits} credits, +${cfg.crystals} crystals, +${cfg.xp} xp.` +
+    ` ${status.remaining}/${ADS.dailyCap} daily, ${status.sessionRemaining}/${ADS.sessionCap} session left.`;
+  console.info("rewarded_shown", { placement: modeKey, reason });
+  trackEvent("rewarded_shown", { placement: modeKey, reason });
+
+  adRewardBtn.onclick = async () => {
+    const ok = await tryRewardedPlacement({
+      placement: modeKey,
+      cfg,
+      buttonEl: adRewardBtn,
+      textEl: adRewardTextEl,
+      markClaimed: true,
+    });
+    if (!ok) return;
+  };
+}
+
+function reviveRunAfterAd() {
+  if (run.continueUsed) return false;
+  run.continueUsed = true;
+  run.active = true;
+  player.alive = true;
+  player.hull = Math.max(player.hull, Math.floor(player.hullMax * 0.45));
+  player.shield = Math.max(player.shield, Math.floor(player.shieldMax * 0.38));
+  player.invulnerableUntil = run.time + 1.5;
+  run.hitFlash = 0;
+  if (pauseOverlayEl) pauseOverlayEl.classList.add("hidden");
+  showToast("Run continued.");
+  setState(STATE.RUN);
+  return true;
+}
+
+function grantAdReward(cfg, placement = "unknown") {
+  if (!cfg) return { ok: false, credits: 0, crystals: 0, xp: 0, summary: "no reward" };
+  const credits = Math.max(0, Math.floor(Number(cfg.credits || 0)));
+  const crystals = Math.max(0, Math.floor(Number(cfg.crystals || 0)));
+  const xp = Math.max(0, Math.floor(Number(cfg.xp || 0)));
+  if (credits <= 0 && crystals <= 0 && xp <= 0) {
+    return { ok: false, credits, crystals, xp, summary: "no reward" };
+  }
+  SAVE.profile.credits += credits;
+  SAVE.profile.crystals += crystals;
+  SAVE.profile.crystalsShadow = Math.max(SAVE.profile.crystalsShadow || 0, SAVE.profile.crystals);
+  SAVE.profile.xp += xp;
+  SAVE.profile.totalCreditsEarned = Number(SAVE.profile.totalCreditsEarned || 0) + credits;
+  SAVE.profile.totalCrystalsEarned = Number(SAVE.profile.totalCrystalsEarned || 0) + crystals;
+  SAVE.profile.totalXpEarned = Number(SAVE.profile.totalXpEarned || 0) + xp;
+  appendAdRewardHistoryEntry({ placement, credits, crystals, xp });
+  reconcileAdRewardLedgerIntegrity();
+  SAVE.profile.updatedAt = nowMs();
+  saveNow();
+  updateTopBar();
+  renderMissionBoard();
+  evaluateAchievements("ad_reward");
+  if (CLOUD.enabled && CLOUD.user) cloudPush().catch(() => {});
+  const parts = [];
+  if (credits > 0) parts.push(`+${credits} credits`);
+  if (crystals > 0) parts.push(`+${crystals} crystals`);
+  if (xp > 0) parts.push(`+${xp} xp`);
+  return {
+    ok: true,
+    credits,
+    crystals,
+    xp,
+    summary: parts.join(", "),
+  };
 }
 
 function restartActiveRun() {
@@ -8802,6 +8543,7 @@ function startRun(mode, options = {}) {
   if (!guardStartRun(mode, options)) return;
   showFullscreenHint();
   activeMode = mode;
+  run.adRewardClaimed = false;
   trackEvent("match_start", {
     mode,
     mission_id: Number.isFinite(Number(options.missionId)) ? Number(options.missionId) : null,
@@ -9906,8 +9648,6 @@ function initializeAppState() {
   if (appInitialized) return;
   appInitialized = true;
   try {
-    ensureI18nMutationObserver();
-    void ensureI18nCatalog();
     initAnalytics();
     cloudInit();
     updateTopBar();
@@ -9920,7 +9660,6 @@ function initializeAppState() {
     if (!fullscreenCleanup) fullscreenCleanup = setupFullscreenToggle({ element: document.documentElement });
     setFullscreenButtonLabel();
     updateFullscreenButtonVisibility();
-    localizeDomLiterals(document.body);
   } catch (err) {
     console.error("[BOOT] initializeAppState failed", err);
     showToast("Initialization issue detected. Refresh and try again.");
@@ -10186,8 +9925,6 @@ function bootWithAdProfile() {
   startAppBoot();
 }
 
-captureReferralCodeFromQuery();
 bootWithAdProfile();
-
 
 

@@ -472,23 +472,6 @@ canvas#game {
   font-weight: 700;
 }
 
-.referralProgress {
-  margin-top: 10px;
-  width: 100%;
-  height: 10px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.12);
-  overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-}
-
-.referralProgress__bar {
-  width: 0;
-  height: 100%;
-  background: linear-gradient(90deg, #52dfff, #ffc774);
-  transition: width 0.2s ease;
-}
-
 .adHistoryList {
   margin-top: 10px;
   display: grid;
@@ -1150,33 +1133,6 @@ body.ad-profile-gated #gameRoot {
   margin-bottom: 8px;
   display: flex;
   justify-content: flex-end;
-}
-
-.rewardNotice {
-  margin: 10px 0 4px;
-  padding: 12px;
-  border-radius: 14px;
-  border: 1px solid rgba(255, 199, 116, 0.34);
-  background: linear-gradient(135deg, rgba(255, 199, 116, 0.12), rgba(82, 223, 255, 0.12));
-  pointer-events: auto;
-}
-
-.rewardNotice strong {
-  display: block;
-  font-size: 14px;
-  letter-spacing: 0.03em;
-}
-
-.rewardNotice p {
-  margin: 8px 0 0;
-  font-size: 13px;
-  line-height: 1.35;
-  opacity: 0.92;
-}
-
-.rewardNotice__actions {
-  justify-content: flex-start;
-  margin-top: 10px;
 }
 
 .guestSyncBanner {

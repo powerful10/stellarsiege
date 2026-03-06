@@ -61,18 +61,12 @@ const rewardedAdUnitPath =
     : "";
 const vignetteZoneId = "10661017";
 const vignetteScriptSrc = "https://gizokraijaw.net/vignette.min.js";
-const baseRewardedProvider = "none";
+const baseRewardedProvider = "vignette_click";
 const existingAdsConfig = typeof window.ADS_CONFIG === "object" && window.ADS_CONFIG ? window.ADS_CONFIG : {};
-const rewardedUrl =
-  typeof window.REWARDED_AD_URL === "string" && window.REWARDED_AD_URL.trim()
-    ? window.REWARDED_AD_URL.trim()
-    : String(existingAdsConfig.rewardedUrl || existingAdsConfig.monetagDirectLinkUrl || "").trim();
 
 window.ADS_CONFIG = {
   provider: baseRewardedProvider,
   defaultProvider: baseRewardedProvider,
-  rewardedUrl,
-  minAwaySeconds: 0,
   sessionRewardCap: 6,
   dailyRewardCap: 15,
   cooldownSeconds: 90,
@@ -89,7 +83,6 @@ window.ADS_CONFIG = {
   vignetteZoneId,
   vignetteScriptSrc,
   vignetteMinAwaySeconds: 10,
-  vignetteOpenDetectSeconds: 15,
   vignetteMaxWaitSeconds: 180,
 
   // Dev-only fallback simulator:
@@ -97,8 +90,3 @@ window.ADS_CONFIG = {
   mockSeconds: 12,
   ...existingAdsConfig,
 };
-
-if (typeof window.TELEGRAM_REWARD_BOT_URL !== "string") {
-  window.TELEGRAM_REWARD_BOT_URL = "https://t.me/StellarSiegeRewardSystem_Bot";
-}
-

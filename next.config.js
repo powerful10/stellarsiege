@@ -1,14 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  async redirects() {
-    return [
-      {
-        source: "/game/hangar",
-        destination: "/hangar",
-        permanent: false,
-      },
-    ];
-  },
   async rewrites() {
     return [
       { source: "/game/survival/start", destination: "/game/index.html" },
@@ -18,6 +9,8 @@ const nextConfig = {
       { source: "/game/onlinematch", destination: "/game/index.html" },
       { source: "/game/onlinematch/start", destination: "/game/index.html" },
       { source: "/game/leaderboard", destination: "/game/index.html" },
+      { source: "/game/hangar", destination: "/game/index.html" },
+      { source: "/game/settings", destination: "/game/index.html" },
       { source: "/game/account", destination: "/game/index.html" },
     ];
   },
