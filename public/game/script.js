@@ -8820,6 +8820,31 @@ function endRun(reason) {
     ? `${credits} credits, ${crystals} crystals, ${xp} xp`
     : `${credits} credits, ${crystals} crystals, ${xp} xp`;
 
+  const goDoubleBtn = document.getElementById("gameOverDoubleBtn");
+  if (goDoubleBtn) {
+    const hasRewards = keepRewards && (credits > 0 || crystals > 0);
+    goDoubleBtn.classList.toggle("hidden", !hasRewards);
+    goDoubleBtn.disabled = !hasRewards;
+    goDoubleBtn.textContent = `⚡ Watch Ad (+${credits} Credits${crystals > 0 ? `, +${crystals} Crystals` : ""})`;
+    goDoubleBtn.onclick = () => {
+      triggerInGameRewardedAd(
+        () => {
+          SAVE.credits += credits;
+          SAVE.crystals = (SAVE.crystals || 0) + crystals;
+          saveNow();
+          updateTopBar();
+          finalRewardsEl.textContent = `${credits * 2} credits, ${crystals * 2} crystals, ${xp} xp (2x!)`;
+          goDoubleBtn.disabled = true;
+          goDoubleBtn.textContent = "✓ 2x Rewards Claimed!";
+          showToast(`Doubled run rewards! +${credits} Credits${crystals > 0 ? `, +${crystals} Crystals` : ""}`);
+        },
+        null,
+        goDoubleBtn,
+        "gameover_double"
+      );
+    };
+  }
+
   newRecordBadgeEl.classList.toggle("hidden", !newRecord);
 
   gameoverSubEl.textContent = "";
