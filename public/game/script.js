@@ -8641,6 +8641,8 @@ function killEnemy(enemy) {
     if (enemy.type === "boss") {
       run.campaign.bossesKilled += 1;
     }
+  }
+
   run.shake = Math.min(14, run.shake + (enemy.type === "boss" ? 10 : 2.4));
   burst(enemy.x, enemy.y, enemy.color, enemy.type === "boss" ? 85 : 28, enemy.type === "boss" ? 1.5 : 1.1);
   if (enemy.modifiers && enemy.modifiers.includes("volatile")) {
