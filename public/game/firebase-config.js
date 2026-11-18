@@ -43,8 +43,8 @@ if (typeof window.PAYMENTS_API_BASE !== "string") {
 
 // Optional: GA4 measurement ID (for event analytics / funnel tracking).
 // Example: window.GA_MEASUREMENT_ID = "G-XXXXXXXXXX";
-if (typeof window.GA_MEASUREMENT_ID !== "string") {
-  window.GA_MEASUREMENT_ID = "";
+if (typeof window.GA_MEASUREMENT_ID !== "string" || !window.GA_MEASUREMENT_ID.trim()) {
+  window.GA_MEASUREMENT_ID = "G-WLS8XZTGMP";
 }
 
 // Optional: rewarded ad config.
@@ -59,14 +59,14 @@ const rewardedAdUnitPath =
   typeof window.AD_MANAGER_REWARDED_UNIT_PATH === "string"
     ? window.AD_MANAGER_REWARDED_UNIT_PATH.trim()
     : "";
-const vignetteZoneId = "10661017";
-const vignetteScriptSrc = "https://gizokraijaw.net/vignette.min.js";
-const baseRewardedProvider = "none";
+const vignetteZoneId = "12192845";
+const vignetteScriptSrc = "https://n6wxm.com/vignette.min.js";
+const baseRewardedProvider = "monetag_direct";
 const existingAdsConfig = typeof window.ADS_CONFIG === "object" && window.ADS_CONFIG ? window.ADS_CONFIG : {};
 const rewardedUrl =
   typeof window.REWARDED_AD_URL === "string" && window.REWARDED_AD_URL.trim()
     ? window.REWARDED_AD_URL.trim()
-    : String(existingAdsConfig.rewardedUrl || existingAdsConfig.monetagDirectLinkUrl || "").trim();
+    : String(existingAdsConfig.rewardedUrl || existingAdsConfig.monetagDirectLinkUrl || "https://uplcm.com/4/12193075").trim();
 
 window.ADS_CONFIG = {
   provider: baseRewardedProvider,

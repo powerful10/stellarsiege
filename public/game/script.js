@@ -1,4 +1,4 @@
-﻿/*
+/*
   Stellar Siege - Roguelite Arena
 
   Your clicks weren't working because `script.js` was missing from the folder,
@@ -127,7 +127,7 @@ const ADS = {
     )
   ),
 };
-const ADS_DISABLED = true;
+const ADS_DISABLED = false;
 
 const AUTH_RUNTIME = {
   signedIn: false,
@@ -211,7 +211,7 @@ function applyAdProfileRuntime(profile) {
     return;
   }
 
-  const selected = profile === AD_PROFILE.SAFE || profile === AD_PROFILE.STANDARD ? profile : "";
+  const selected = profile === AD_PROFILE.SAFE ? AD_PROFILE.SAFE : AD_PROFILE.STANDARD;
 
   if (selected === AD_PROFILE.STANDARD) {
     ADS.provider = ADS_DEFAULT_PROVIDER || "none";
