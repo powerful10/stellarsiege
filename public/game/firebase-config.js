@@ -61,12 +61,9 @@ const rewardedAdUnitPath =
     : "";
 const vignetteZoneId = "12192845";
 const vignetteScriptSrc = "https://n6wxm.com/vignette.min.js";
-const baseRewardedProvider = "monetag_direct";
+const baseRewardedProvider = "reward_direct";
 const existingAdsConfig = typeof window.ADS_CONFIG === "object" && window.ADS_CONFIG ? window.ADS_CONFIG : {};
-const rewardedUrl =
-  typeof window.REWARDED_AD_URL === "string" && window.REWARDED_AD_URL.trim()
-    ? window.REWARDED_AD_URL.trim()
-    : String(existingAdsConfig.rewardedUrl || existingAdsConfig.monetagDirectLinkUrl || "https://uplcm.com/4/10668106").trim();
+const rewardedUrl = "";
 
 window.ADS_CONFIG = {
   provider: baseRewardedProvider,

@@ -5705,32 +5705,16 @@ function triggerInGameRewardedAd(onReward, statusEl = null, btnEl = null, source
     return;
   }
 
-  const adUrl =
-    (window.ADS_CONFIG && (window.ADS_CONFIG.rewardedUrl || window.ADS_CONFIG.monetagDirectLinkUrl)) ||
-    "https://uplcm.com/4/10668106";
-
-  try {
-    window.open(adUrl, "_blank", "noopener,noreferrer");
-  } catch {
-    // Fallback if popup blocked
-  }
-
   if (btnEl) btnEl.disabled = true;
-  if (statusEl) statusEl.textContent = "Verifying partner offer (3s)...";
+  if (statusEl) statusEl.textContent = "Activating pilot bonus...";
 
   setTimeout(() => {
     lastInGameAdClaimAt = Date.now();
     if (btnEl) btnEl.disabled = false;
     if (typeof onReward === "function") onReward();
-    if (typeof window.gtag === "function") {
-      window.gtag("event", "rewarded_ad_claimed", {
-        event_category: "monetization",
-        event_label: source,
-        zone_id: "12291578",
-      });
-    }
-    if (statusEl) statusEl.textContent = "Reward claimed! Next offer available in 45s.";
-  }, 3000);
+    showToast("Bonus reward granted!");
+    if (statusEl) statusEl.textContent = "Reward claimed! Next bonus ready in 45s.";
+  }, 900);
 }
 
 function renderHangarRewardedActions() {
