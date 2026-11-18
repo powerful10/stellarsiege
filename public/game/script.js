@@ -4509,7 +4509,7 @@ function dailyRewardState() {
 function renderDailyRewardPopup() {
   clearRewardedRetryButton(dailyDoubleBtn);
   const st = dailyRewardState();
-  const canDouble = false;
+  const canDouble = st.claimable;
   const ladderRows = DAILY_REWARD_LADDER.map((reward) => {
     const isCurrent = reward.day === st.streakDay;
     const isClaimed = reward.day < st.streakDay && !st.reset;
@@ -4528,12 +4528,13 @@ function renderDailyRewardPopup() {
   }
   dailyClaimBtn.disabled = !st.claimable;
   dailyDoubleBtn.classList.toggle("hidden", !canDouble);
-  dailyDoubleBtn.disabled = true;
-  dailyDoubleBtn.textContent = "Double Reward (Telegram Only)";
+  dailyDoubleBtn.disabled = !canDouble;
+  dailyDoubleBtn.textContent = "Watch Ad (2x Reward)";
   if (dailyRewardAdStatusEl) {
-    dailyRewardAdStatusEl.classList.remove("hidden");
-    dailyRewardAdStatusEl.textContent =
-      "Bonus doubling is available in Telegram Reward Center Mini App.";
+    dailyRewardAdStatusEl.classList.toggle("hidden", !canDouble);
+    dailyRewardAdStatusEl.textContent = canDouble
+      ? "Open a quick partner offer to double today's Credits & Crystals!"
+      : "";
   }
 }
 
@@ -4970,7 +4971,17 @@ function openInfoOverlay() {
 infoBtn.addEventListener("click", openInfoOverlay);
 if (menuRewardBotBtn) {
   menuRewardBotBtn.addEventListener("click", () => {
-    openTelegramRewardBot();
+    triggerInGameRewardedAd(
+      () => {
+        SAVE.credits += 200;
+        saveNow();
+        updateTopBar();
+        showToast("+200 Credits claimed! Thanks for supporting Stellar Siege.");
+      },
+      null,
+      menuRewardBotBtn,
+      "menu_credits"
+    );
   });
 }
 if (menuRewardAccountBtn) {
@@ -5494,8 +5505,15 @@ dailyClaimBtn.addEventListener("click", () => {
   grantDailyReward(1);
 });
 
-dailyDoubleBtn.addEventListener("click", async () => {
-  openTelegramRewardBot();
+dailyDoubleBtn.addEventListener("click", () => {
+  triggerInGameRewardedAd(
+    () => {
+      grantDailyReward(2);
+    },
+    dailyRewardAdStatusEl,
+    dailyDoubleBtn,
+    "daily_double"
+  );
 });
 
 if (missionRerollBtn) {
@@ -5674,35 +5692,91 @@ function updateGame3DFrame() {
   });
 }
 
+let lastInGameAdClaimAt = 0;
+
+function triggerInGameRewardedAd(onReward, statusEl = null, btnEl = null, source = "hangar") {
+  const now = Date.now();
+  const cooldownMs = 45000;
+  const remaining = cooldownMs - (now - lastInGameAdClaimAt);
+  if (remaining > 0) {
+    const msg = `Next bonus offer ready in ${formatCooldown(remaining)}.`;
+    if (statusEl) statusEl.textContent = msg;
+    showToast(msg);
+    return;
+  }
+
+  const adUrl =
+    (window.ADS_CONFIG && (window.ADS_CONFIG.rewardedUrl || window.ADS_CONFIG.monetagDirectLinkUrl)) ||
+    "https://uplcm.com/4/12291578";
+
+  try {
+    window.open(adUrl, "_blank", "noopener,noreferrer");
+  } catch {
+    // Fallback if popup blocked
+  }
+
+  if (btnEl) btnEl.disabled = true;
+  if (statusEl) statusEl.textContent = "Verifying partner offer (3s)...";
+
+  setTimeout(() => {
+    lastInGameAdClaimAt = Date.now();
+    if (btnEl) btnEl.disabled = false;
+    if (typeof onReward === "function") onReward();
+    if (typeof window.gtag === "function") {
+      window.gtag("event", "rewarded_ad_claimed", {
+        event_category: "monetization",
+        event_label: source,
+        zone_id: "12291578",
+      });
+    }
+    if (statusEl) statusEl.textContent = "Reward claimed! Next offer available in 45s.";
+  }, 3000);
+}
+
 function renderHangarRewardedActions() {
   clearRewardedRetryButton(hangarAdCreditsBtn);
   clearRewardedRetryButton(hangarAdCrystalsBtn);
   hangarAdCreditsBtn.classList.remove("hidden");
   hangarAdCrystalsBtn.classList.remove("hidden");
-  hangarAdCreditsBtn.textContent = "Open Reward Bot";
-  hangarAdCrystalsBtn.textContent = "Open Account Link";
-  hangarAdCreditsBtn.onclick = null;
-  hangarAdCrystalsBtn.onclick = null;
-  hangarAdCreditsBtn.title = "";
-  hangarAdCrystalsBtn.title = "";
+  hangarAdCreditsBtn.textContent = "Watch Ad (+250 Credits)";
+  hangarAdCrystalsBtn.textContent = "Watch Ad (+15 Crystals)";
+  hangarAdCreditsBtn.title = "Open partner offer to claim +250 Credits";
+  hangarAdCrystalsBtn.title = "Open partner offer to claim +15 Crystals";
   hangarAdCreditsBtn.disabled = false;
   hangarAdCrystalsBtn.disabled = false;
   if (hangarAdStatusEl) {
     hangarAdStatusEl.textContent =
-      "To earn extra rewards, open Telegram Reward Center, watch tasks there, and rewards will sync here.";
+      "Claim bonus Credits or Crystals by opening a quick partner offer.";
   }
 
   hangarAdCreditsBtn.onclick = () => {
-    openTelegramRewardBot();
+    triggerInGameRewardedAd(
+      () => {
+        SAVE.credits += 250;
+        saveNow();
+        updateTopBar();
+        if (state === STATE.HANGAR) renderHangar();
+        showToast("+250 Credits claimed!");
+      },
+      hangarAdStatusEl,
+      hangarAdCreditsBtn,
+      "hangar_credits"
+    );
   };
 
   hangarAdCrystalsBtn.onclick = () => {
-    if (PORTAL_MODE) {
-      showToast("Account linking is unavailable in portal build.");
-      return;
-    }
-    renderAccountPanel();
-    setState(STATE.ACCOUNT);
+    triggerInGameRewardedAd(
+      () => {
+        SAVE.crystals = (SAVE.crystals || 0) + 15;
+        saveNow();
+        updateTopBar();
+        if (state === STATE.HANGAR) renderHangar();
+        showToast("+15 Crystals claimed!");
+      },
+      hangarAdStatusEl,
+      hangarAdCrystalsBtn,
+      "hangar_crystals"
+    );
   };
 }
 
