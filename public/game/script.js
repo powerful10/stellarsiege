@@ -591,7 +591,7 @@ let forcedPreviewTier = null;
 let unlockFxTimer = null;
 let currentGameShipKey = "";
 let game3DReady = false;
-const SIMPLE_HANGAR_MODE = true;
+const SIMPLE_HANGAR_MODE = false;
 
 function tierFromIndex(idx) {
   return Math.max(1, Math.min(3, Math.floor(Number(idx || 1))));
@@ -5682,6 +5682,8 @@ function updateGame3DFrame() {
   window.ship3D.updateGamePlayer({
     x: player.x,
     y: player.y,
+    vx: player.vx,
+    vy: player.vy,
     angle: player.angle,
     tier,
     thrusterLevel: selectedState.upgrades.thrusters || 0,
@@ -8395,18 +8397,35 @@ function spawnBullet({ x, y, vx, vy, team, damage, pierce, life = 1.4, radius = 
   });
 }
 
-function burst(x, y, color, count = 18, power = 1) {
+function burst(x, y, color, count = 22, power = 1) {
   for (let i = 0; i < count; i += 1) {
     const a = Math.random() * TAU;
-    const sp = rand(70, 260) * power;
+    const sp = rand(80, 320) * power;
     entities.particles.push({
       x,
       y,
       vx: Math.cos(a) * sp,
       vy: Math.sin(a) * sp,
-      life: rand(0.4, 1.0),
-      color,
-      size: rand(2, 5) * power,
+      life: rand(0.35, 0.85),
+      color: Math.random() < 0.35 ? "#ffffff" : color,
+      size: rand(2.5, 6) * power,
+      shard: false,
+    });
+  }
+  for (let i = 0; i < Math.floor(count * 0.45); i += 1) {
+    const a = Math.random() * TAU;
+    const sp = rand(60, 200) * power;
+    entities.particles.push({
+      x,
+      y,
+      vx: Math.cos(a) * sp,
+      vy: Math.sin(a) * sp,
+      life: rand(0.5, 1.1),
+      color: Math.random() < 0.5 ? "#94a3b8" : color,
+      size: rand(3.5, 7.5) * power,
+      shard: true,
+      rot: Math.random() * TAU,
+      rotSpd: rand(-8, 8),
     });
   }
 }
@@ -9438,6 +9457,7 @@ function updateBullets(dt) {
           const armored = Array.isArray(e.modifiers) && e.modifiers.includes("armored");
           const finalDamage = b.damage * (armored ? 0.72 : 1);
           e.hp -= finalDamage;
+          e.hitFlash = 0.08;
           run.score += 6;
           run.combo = Math.min(10, run.combo + 1);
           run.comboTimer = 1.2;
@@ -9627,67 +9647,147 @@ function beginFrame() {
   ctx.clearRect(0, 0, WORLD.width, WORLD.height);
 }
 
+let nebulaTime = 0;
 function drawBackground(dt) {
-  const g = ctx.createLinearGradient(0, 0, 0, WORLD.height);
-  g.addColorStop(0, "#2d2b6f");
-  g.addColorStop(0.45, "#171c45");
-  g.addColorStop(1, "#0b0f1f");
-  ctx.fillStyle = g;
+  nebulaTime += dt * 0.25;
+
+  // Deep cosmic void
+  ctx.fillStyle = "#040714";
   ctx.fillRect(0, 0, WORLD.width, WORLD.height);
 
-  // Stars
+  // Volumetric Cosmic Nebula Layer 1 (Galactic Violet / Magenta)
+  const cx1 = WORLD.width * 0.35 + Math.sin(nebulaTime * 0.7) * 70;
+  const cy1 = WORLD.height * 0.38 + Math.cos(nebulaTime * 0.5) * 50;
+  const rad1 = Math.max(WORLD.width, WORLD.height) * 0.55;
+  const neb1 = ctx.createRadialGradient(cx1, cy1, 15, cx1, cy1, rad1);
+  neb1.addColorStop(0, "rgba(139, 92, 246, 0.18)");
+  neb1.addColorStop(0.5, "rgba(88, 28, 135, 0.08)");
+  neb1.addColorStop(1, "rgba(4, 7, 20, 0)");
+  ctx.fillStyle = neb1;
+  ctx.fillRect(0, 0, WORLD.width, WORLD.height);
+
+  // Volumetric Cosmic Nebula Layer 2 (Electric Cyan / Deep Teal)
+  const cx2 = WORLD.width * 0.72 + Math.cos(nebulaTime * 0.6) * 65;
+  const cy2 = WORLD.height * 0.68 + Math.sin(nebulaTime * 0.8) * 45;
+  const rad2 = Math.max(WORLD.width, WORLD.height) * 0.58;
+  const neb2 = ctx.createRadialGradient(cx2, cy2, 20, cx2, cy2, rad2);
+  neb2.addColorStop(0, "rgba(14, 165, 233, 0.16)");
+  neb2.addColorStop(0.55, "rgba(15, 23, 42, 0.07)");
+  neb2.addColorStop(1, "rgba(4, 7, 20, 0)");
+  ctx.fillStyle = neb2;
+  ctx.fillRect(0, 0, WORLD.width, WORLD.height);
+
+  // Warp speed streaks when player is moving fast
+  const pSpeed = player ? Math.hypot(player.vx, player.vy) : 0;
+  if (pSpeed > 70) {
+    const warpRatio = Math.min(1, (pSpeed - 70) / 260);
+    ctx.strokeStyle = `rgba(186, 230, 253, ${0.2 * warpRatio})`;
+    ctx.lineWidth = 1.4;
+    const invAngle = (player ? player.angle : 0) + Math.PI;
+    const streakLen = 14 + warpRatio * 32;
+    for (let i = 0; i < 18; i++) {
+      const sx = (Math.sin(nebulaTime * 8 + i * 83) * 0.5 + 0.5) * WORLD.width;
+      const sy = (Math.cos(nebulaTime * 7 + i * 49) * 0.5 + 0.5) * WORLD.height;
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(sx + Math.cos(invAngle) * streakLen, sy + Math.sin(invAngle) * streakLen);
+      ctx.stroke();
+    }
+  }
+
+  // Multi-tier Parallax Starfield with realistic depth & color
   stars.forEach((s) => {
-    s.tw += dt * (0.8 + s.z);
-    s.y += s.z * 26 * dt;
+    s.tw += dt * (1.1 + s.z);
+    s.y += s.z * 32 * dt;
     if (s.y > WORLD.height + 10) {
       s.y = -10;
       s.x = Math.random() * WORLD.width;
     }
-    const a = 0.25 + Math.sin(s.tw) * 0.2 + s.z * 0.35;
-    ctx.fillStyle = `rgba(255,255,255,${clamp(a, 0.15, 0.95)})`;
-    ctx.fillRect(s.x, s.y, 2 * s.z, 2 * s.z);
+    const a = 0.35 + Math.sin(s.tw) * 0.25 + s.z * 0.38;
+    const starSize = s.z > 0.95 ? 2.5 : s.z > 0.65 ? 1.8 : 1.2;
+    const starColor = s.z > 0.95 ? "#7dd3fc" : s.z > 0.8 ? "#fef08a" : "#ffffff";
+    ctx.fillStyle = starColor;
+    ctx.globalAlpha = clamp(a, 0.18, 1);
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, starSize * 0.75, 0, TAU);
+    ctx.fill();
+
+    if (s.z > 1.1) {
+      ctx.strokeStyle = `rgba(255, 255, 255, ${a * 0.45})`;
+      ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      ctx.moveTo(s.x - 4, s.y);
+      ctx.lineTo(s.x + 4, s.y);
+      ctx.moveTo(s.x, s.y - 4);
+      ctx.lineTo(s.x, s.y + 4);
+      ctx.stroke();
+    }
   });
+  ctx.globalAlpha = 1;
 }
 
-function drawShip(x, y, angle, main, accent, scale = 1) {
+function drawShip(x, y, angle, main, accent, scale = 1, flash = false) {
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(angle);
   ctx.scale(scale, scale);
 
+  if (flash) {
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath();
+    ctx.moveTo(30, 0);
+    ctx.lineTo(-20, -22);
+    ctx.lineTo(-8, 0);
+    ctx.lineTo(-20, 22);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    return;
+  }
+
+  // Engine exhaust glow
   ctx.globalCompositeOperation = "lighter";
-  ctx.fillStyle = "rgba(64, 243, 255, 0.16)";
+  ctx.fillStyle = accent;
+  ctx.globalAlpha = 0.55;
   ctx.beginPath();
-  ctx.ellipse(0, 10, 26, 12, 0, 0, TAU);
+  ctx.moveTo(-16, -6);
+  ctx.lineTo(-28 - Math.random() * 8, 0);
+  ctx.lineTo(-16, 6);
+  ctx.closePath();
   ctx.fill();
+  ctx.globalAlpha = 1;
   ctx.globalCompositeOperation = "source-over";
 
-  ctx.fillStyle = main;
+  // Main hull body with high-tech metallic shading
+  const grad = ctx.createLinearGradient(-18, -12, 28, 12);
+  grad.addColorStop(0, "#0b1329");
+  grad.addColorStop(0.5, main);
+  grad.addColorStop(1, "#030712");
+  ctx.fillStyle = grad;
   ctx.beginPath();
-  ctx.moveTo(28, 0);
+  ctx.moveTo(30, 0);
   ctx.lineTo(-18, -18);
-  ctx.lineTo(-6, 0);
+  ctx.lineTo(-8, 0);
   ctx.lineTo(-18, 18);
   ctx.closePath();
   ctx.fill();
 
-  ctx.fillStyle = accent;
+  // Neon armor panel lines
+  ctx.strokeStyle = accent;
+  ctx.lineWidth = 1.8;
   ctx.beginPath();
-  ctx.moveTo(6, -10);
-  ctx.lineTo(-10, -24);
-  ctx.lineTo(-8, -4);
-  ctx.closePath();
-  ctx.fill();
-  ctx.beginPath();
-  ctx.moveTo(6, 10);
-  ctx.lineTo(-10, 24);
-  ctx.lineTo(-8, 4);
-  ctx.closePath();
-  ctx.fill();
+  ctx.moveTo(14, 0);
+  ctx.lineTo(-8, -14);
+  ctx.lineTo(-14, -8);
+  ctx.moveTo(14, 0);
+  ctx.lineTo(-8, 14);
+  ctx.lineTo(-14, 8);
+  ctx.stroke();
 
-  ctx.fillStyle = "#ffd166";
+  // Cockpit / energy core
+  ctx.fillStyle = "#ffffff";
   ctx.beginPath();
-  ctx.arc(6, 0, 6, 0, TAU);
+  ctx.arc(4, 0, 4.5, 0, TAU);
   ctx.fill();
 
   ctx.restore();
@@ -9695,38 +9795,50 @@ function drawShip(x, y, angle, main, accent, scale = 1) {
 
 function drawEnemies() {
   entities.enemies.forEach((e) => {
+    const isFlashing = Boolean(e.hitFlash && e.hitFlash > 0);
+    if (e.hitFlash > 0) e.hitFlash = Math.max(0, e.hitFlash - 0.016);
+
     if (!game3DReady) {
       const angle = Math.atan2(player.y - e.y, player.x - e.x);
-      drawShip(e.x, e.y, angle, e.color, "rgba(255,255,255,0.5)", e.type === "boss" ? 1.5 : 1);
+      drawShip(e.x, e.y, angle, e.color, "rgba(255,255,255,0.7)", e.type === "boss" ? 1.6 : 1, isFlashing);
     }
 
     if (e.elite) {
-      ctx.strokeStyle = "rgba(255, 219, 110, 0.9)";
-      ctx.lineWidth = 2;
+      ctx.strokeStyle = "rgba(255, 219, 110, 0.95)";
+      ctx.lineWidth = 2.4;
       ctx.beginPath();
-      ctx.arc(e.x, e.y, e.size + 6, 0, TAU);
+      ctx.arc(e.x, e.y, e.size + 7, 0, TAU);
       ctx.stroke();
     }
 
     if (Array.isArray(e.modifiers) && e.modifiers.length) {
       const ringColor = e.modifiers.includes("volatile")
-        ? "rgba(255, 148, 118, 0.85)"
+        ? "rgba(255, 148, 118, 0.9)"
         : e.modifiers.includes("armored")
-        ? "rgba(166, 208, 255, 0.85)"
+        ? "rgba(166, 208, 255, 0.9)"
         : e.modifiers.includes("leech")
-        ? "rgba(220, 150, 255, 0.85)"
-        : "rgba(160, 255, 201, 0.82)";
+        ? "rgba(220, 150, 255, 0.9)"
+        : "rgba(160, 255, 201, 0.88)";
       ctx.strokeStyle = ringColor;
-      ctx.lineWidth = 1.5;
+      ctx.lineWidth = 1.8;
       ctx.beginPath();
-      ctx.arc(e.x, e.y, e.size + 10, 0, TAU);
+      ctx.arc(e.x, e.y, e.size + 11, 0, TAU);
       ctx.stroke();
     }
 
-    ctx.fillStyle = "rgba(0,0,0,0.35)";
-    ctx.fillRect(e.x - 26, e.y + e.size + 8, 52, 6);
-    ctx.fillStyle = "rgba(255,255,255,0.7)";
-    ctx.fillRect(e.x - 26, e.y + e.size + 8, 52 * (e.hp / e.maxHp), 6);
+    // High tech segmented health bar
+    const barW = 56;
+    const barH = 5;
+    const barX = e.x - barW / 2;
+    const barY = e.y + e.size + 8;
+    ctx.fillStyle = "rgba(6, 11, 25, 0.75)";
+    ctx.fillRect(barX, barY, barW, barH);
+    const hpRatio = clamp(e.hp / e.maxHp, 0, 1);
+    ctx.fillStyle = hpRatio > 0.5 ? "#22d3ee" : hpRatio > 0.25 ? "#f59e0b" : "#ef4444";
+    ctx.fillRect(barX, barY, barW * hpRatio, barH);
+    ctx.strokeStyle = "rgba(255,255,255,0.2)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(barX, barY, barW, barH);
   });
 }
 
@@ -9805,36 +9917,83 @@ function drawBullets() {
   const selectedState = ensureShipState(SAVE.profile.selectedShipId);
   const weaponPower = Number(selectedState.upgrades.damage || 0) + Number(selectedState.upgrades.fireRate || 0);
   const weaponTier = weaponPower >= 12 ? 3 : weaponPower >= 6 ? 2 : 1;
-  ctx.globalCompositeOperation = "lighter";
+
+  ctx.save();
   entities.bullets.forEach((b) => {
     const alpha = clamp(b.life / 1.4, 0, 1);
-    ctx.fillStyle =
-      b.team === "player"
-        ? weaponTier === 3
-          ? `rgba(255, 122, 217, ${0.75 * alpha})`
-          : weaponTier === 2
-          ? `rgba(115, 255, 244, ${0.7 * alpha})`
-          : `rgba(64, 243, 255, ${0.65 * alpha})`
-        : `rgba(255, 93, 125, ${0.7 * alpha})`;
+    const speed = Math.hypot(b.vx, b.vy) || 1;
+    const bAngle = Math.atan2(b.vy, b.vx);
+    const tailLen = clamp(speed * 0.038, 10, 26);
+    const isPlayer = b.team === "player";
+    const primaryColor = isPlayer
+      ? weaponTier === 3 ? "#e879f9" : weaponTier === 2 ? "#38bdf8" : "#22d3ee"
+      : "#f43f5e";
+    const coreColor = "#ffffff";
+
+    ctx.save();
+    ctx.translate(b.x, b.y);
+    ctx.rotate(bAngle);
+
+    // Glowing plasma bolt gradient trail
+    const grad = ctx.createLinearGradient(-tailLen, 0, b.r + 2, 0);
+    grad.addColorStop(0, "rgba(0,0,0,0)");
+    grad.addColorStop(0.55, primaryColor);
+    grad.addColorStop(1, coreColor);
+
+    ctx.fillStyle = grad;
+    ctx.globalAlpha = alpha;
     ctx.beginPath();
-    const outer = b.team === "player" ? b.r + 2 + (weaponTier - 1) * 0.6 : b.r + 2;
-    ctx.arc(b.x, b.y, outer, 0, TAU);
+    ctx.moveTo(b.r + 3, 0);
+    ctx.lineTo(-tailLen, -b.r * 0.5);
+    ctx.lineTo(-tailLen, b.r * 0.5);
+    ctx.closePath();
     ctx.fill();
-    ctx.fillStyle = b.team === "player" ? `rgba(255,255,255, ${0.55 * alpha})` : `rgba(255,255,255, ${0.3 * alpha})`;
+
+    // High-energy white core
+    ctx.fillStyle = coreColor;
     ctx.beginPath();
-    ctx.arc(b.x, b.y, b.r, 0, TAU);
+    ctx.arc(0, 0, b.r * 0.85, 0, TAU);
     ctx.fill();
+
+    // Outer plasma corona
+    ctx.strokeStyle = primaryColor;
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.arc(0, 0, b.r + 1.2, 0, TAU);
+    ctx.stroke();
+
+    ctx.restore();
   });
-  ctx.globalCompositeOperation = "source-over";
+  ctx.restore();
 }
 
 function drawParticles() {
-  ctx.globalCompositeOperation = "lighter";
+  ctx.save();
   entities.particles.forEach((p) => {
-    ctx.fillStyle = `rgba(255,255,255,${clamp(p.life, 0, 1)})`;
-    ctx.fillRect(p.x, p.y, p.size, p.size);
+    const alpha = clamp(p.life, 0, 1);
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = p.color || "#38bdf8";
+
+    if (p.shard) {
+      // Rotating metallic hull debris
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate((p.rot || 0) + (p.rotSpd || 3) * (1 - p.life));
+      ctx.beginPath();
+      ctx.moveTo(-p.size, -p.size * 0.55);
+      ctx.lineTo(p.size * 1.3, 0);
+      ctx.lineTo(-p.size * 0.35, p.size);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    } else {
+      // Glowing circular plasma spark
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, Math.max(0.8, p.size * 0.7), 0, TAU);
+      ctx.fill();
+    }
   });
-  ctx.globalCompositeOperation = "source-over";
+  ctx.restore();
 }
 
 function drawDamageTexts() {

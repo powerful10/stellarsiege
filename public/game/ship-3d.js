@@ -1,18 +1,37 @@
 (function ship3dBootstrap() {
-  const CDN_THREE = "https://unpkg.com/three@0.160.1/build/three.min.js";
+  const LOCAL_THREE = "three.min.js";
+  const LOCAL_GLTF = "GLTFLoader.js";
+  const CDN_THREE = "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js";
+  const CDN_GLTF = "https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js";
 
   const paletteMap = {
-    scout: { body: 0x1de2c4, accent: 0x0ea5e9 },
-    striker: { body: 0x60a5fa, accent: 0x93c5fd },
-    tank: { body: 0xf59e0b, accent: 0xfde68a },
-    sniper: { body: 0xf97316, accent: 0xfb923c },
-    bomber: { body: 0xf43f5e, accent: 0xfb7185 },
-    interceptor: { body: 0x22d3ee, accent: 0x67e8f9 },
-    drone_carrier: { body: 0x8b5cf6, accent: 0xc4b5fd },
-    stealth: { body: 0x64748b, accent: 0xe2e8f0 },
-    warden: { body: 0x84cc16, accent: 0xbef264 },
-    valkyrie: { body: 0xfb923c, accent: 0xfdba74 },
-    nova_revenant: { body: 0xe879f9, accent: 0xf0abfc },
+    scout: { body: 0x1de2c4, accent: 0x0ea5e9, glow: 0x38bdf8 },
+    striker: { body: 0x60a5fa, accent: 0x93c5fd, glow: 0x60a5fa },
+    tank: { body: 0xf59e0b, accent: 0xfde68a, glow: 0xfbbf24 },
+    sniper: { body: 0xf97316, accent: 0xfb923c, glow: 0xf97316 },
+    bomber: { body: 0xf43f5e, accent: 0xfb7185, glow: 0xf43f5e },
+    interceptor: { body: 0x22d3ee, accent: 0x67e8f9, glow: 0x22d3ee },
+    drone_carrier: { body: 0x8b5cf6, accent: 0xc4b5fd, glow: 0xa855f7 },
+    stealth: { body: 0x475569, accent: 0x94a3b8, glow: 0x38bdf8 },
+    warden: { body: 0x84cc16, accent: 0xbef264, glow: 0xa3e635 },
+    valkyrie: { body: 0xfb923c, accent: 0xfdba74, glow: 0xf59e0b },
+    nova_revenant: { body: 0xe879f9, accent: 0xf0abfc, glow: 0xd946ef },
+    starforged_envoy: { body: 0x38bdf8, accent: 0xec4899, glow: 0x06b6d4 },
+  };
+
+  const modelFileMap = {
+    scout: "scout",
+    striker: "striker",
+    tank: "warden",
+    sniper: "ranger",
+    bomber: "striker",
+    interceptor: "ranger",
+    drone_carrier: "astra",
+    stealth: "scout",
+    warden: "warden",
+    valkyrie: "valkyrie",
+    nova_revenant: "astra",
+    starforged_envoy: "astra",
   };
 
   const enemyShipMap = {
@@ -26,13 +45,14 @@
   };
 
   let threePromise = null;
+  const glbCache = new Map();
 
   function loadScript(src) {
     return new Promise((resolve, reject) => {
       const existing = document.querySelector(`script[data-src="${src}"]`);
       if (existing) {
-        if (existing.getAttribute("data-loaded") === "1") resolve();
-        else existing.addEventListener("load", () => resolve(), { once: true });
+        if (existing.getAttribute("data-loaded") === "1") return resolve();
+        existing.addEventListener("load", () => resolve(), { once: true });
         return;
       }
       const script = document.createElement("script");
@@ -49,9 +69,16 @@
   }
 
   function ensureThree() {
-    if (window.THREE) return Promise.resolve(window.THREE);
+    if (window.THREE) {
+      if (window.THREE.GLTFLoader) return Promise.resolve(window.THREE);
+      return loadScript(LOCAL_GLTF).catch(() => loadScript(CDN_GLTF)).then(() => window.THREE).catch(() => window.THREE);
+    }
     if (!threePromise) {
-      threePromise = loadScript(CDN_THREE).then(() => window.THREE);
+      threePromise = loadScript(LOCAL_THREE)
+        .catch(() => loadScript(CDN_THREE))
+        .then(() => loadScript(LOCAL_GLTF).catch(() => loadScript(CDN_GLTF)))
+        .then(() => window.THREE)
+        .catch(() => window.THREE);
     }
     return threePromise;
   }
@@ -59,119 +86,131 @@
   function createMaterial(THREE, color, emissive = 0x000000, opacity = 1) {
     return new THREE.MeshStandardMaterial({
       color,
-      metalness: 0.35,
-      roughness: 0.45,
+      metalness: 0.55,
+      roughness: 0.35,
       emissive,
-      emissiveIntensity: emissive ? 1.2 : 0,
+      emissiveIntensity: emissive ? 1.5 : 0,
       transparent: opacity < 1,
       opacity,
     });
   }
 
+  function getModelPath(shipId, tier) {
+    const base = modelFileMap[shipId] || "scout";
+    const t = Math.max(1, Math.min(3, Math.floor(Number(tier || 1))));
+    return `models/${base}_t${t}.glb`;
+  }
+
+  function loadGLBModel(THREE, shipId, tier) {
+    const path = getModelPath(shipId, tier);
+    if (glbCache.has(path)) return glbCache.get(path);
+
+    if (!THREE.GLTFLoader) return Promise.resolve(null);
+
+    const loader = new THREE.GLTFLoader();
+    const p = new Promise((resolve) => {
+      loader.load(
+        path,
+        (gltf) => {
+          const root = gltf.scene || gltf.scenes[0];
+          root.traverse((child) => {
+            if (child.isMesh) {
+              child.castShadow = true;
+              child.receiveShadow = true;
+              if (child.material) {
+                child.material.metalness = 0.6;
+                child.material.roughness = 0.3;
+                if (child.material.emissive) {
+                  child.material.emissiveIntensity = 2.0;
+                }
+              }
+            }
+          });
+          resolve(root);
+        },
+        undefined,
+        () => resolve(null)
+      );
+    });
+    glbCache.set(path, p);
+    return p;
+  }
+
   function addBasicHullParts(THREE, group, shipId, tier, bodyMat, accentMat, emissiveMat) {
-    const nose = new THREE.Mesh(new THREE.ConeGeometry(0.65, 2.2, 6), bodyMat);
+    const nose = new THREE.Mesh(new THREE.ConeGeometry(0.68, 2.3, 6), bodyMat);
     nose.rotation.z = -Math.PI / 2;
-    nose.position.x = 1.2;
+    nose.position.x = 1.25;
     group.add(nose);
 
-    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.75, 2.1, 8), bodyMat);
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.58, 0.78, 2.2, 8), bodyMat);
     body.rotation.z = -Math.PI / 2;
     body.position.x = -0.1;
     group.add(body);
 
-    const wingL = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.14, 1.1), accentMat);
-    wingL.position.set(-0.2, 0.22, 0.7);
+    const wingL = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.16, 1.2), accentMat);
+    wingL.position.set(-0.2, 0.22, 0.75);
     group.add(wingL);
     const wingR = wingL.clone();
-    wingR.position.z = -0.7;
+    wingR.position.z = -0.75;
     group.add(wingR);
 
-    const cockpit = new THREE.Mesh(new THREE.SphereGeometry(0.25, 10, 8), emissiveMat);
-    cockpit.position.set(0.55, 0.28, 0);
+    const cockpit = new THREE.Mesh(new THREE.SphereGeometry(0.28, 12, 10), emissiveMat);
+    cockpit.position.set(0.6, 0.3, 0);
     group.add(cockpit);
 
     if (shipId === "tank") {
-      const armor = new THREE.Mesh(new THREE.BoxGeometry(1.35, 0.35, 1.55), bodyMat);
+      const armor = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.4, 1.7), bodyMat);
       armor.position.set(-0.3, -0.08, 0);
       group.add(armor);
     } else if (shipId === "sniper") {
-      const rail = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.06, 0.1), emissiveMat);
-      rail.position.set(0.8, 0.16, 0);
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.08, 0.12), emissiveMat);
+      rail.position.set(1.1, 0.18, 0);
       group.add(rail);
-    } else if (shipId === "bomber") {
-      const bombRack = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 1.3, 8), accentMat);
-      bombRack.rotation.x = Math.PI / 2;
-      bombRack.position.set(-0.55, -0.24, 0);
-      group.add(bombRack);
-    } else if (shipId === "interceptor") {
-      const blade = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.08, 0.5), accentMat);
-      blade.position.set(0.2, 0.1, 0);
-      group.add(blade);
-    } else if (shipId === "drone_carrier") {
-      const bay = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.18, 1.7), bodyMat);
-      bay.position.set(-0.35, -0.1, 0);
-      group.add(bay);
-      const podL = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8), emissiveMat);
-      podL.position.set(-0.7, -0.08, 0.56);
-      group.add(podL);
-      const podR = podL.clone();
-      podR.position.z = -0.56;
-      group.add(podR);
-    } else if (shipId === "stealth") {
-      group.rotation.y = 0.16;
-      const fin = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.45, 0.05), accentMat);
-      fin.position.set(-0.55, 0.3, 0);
-      group.add(fin);
-    } else if (shipId === "warden") {
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.08, 10, 20), accentMat);
-      ring.rotation.y = Math.PI / 2;
-      ring.position.set(-0.25, 0, 0);
-      group.add(ring);
     } else if (shipId === "valkyrie") {
-      const spear = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.9, 6), emissiveMat);
+      const spear = new THREE.Mesh(new THREE.ConeGeometry(0.2, 1.1, 6), emissiveMat);
       spear.rotation.z = -Math.PI / 2;
-      spear.position.set(1.95, 0.02, 0);
+      spear.position.set(2.1, 0.02, 0);
       group.add(spear);
-    } else if (shipId === "nova_revenant") {
-      const halo = new THREE.Mesh(new THREE.TorusGeometry(0.68, 0.09, 8, 24), emissiveMat);
-      halo.rotation.y = Math.PI / 2;
-      halo.position.set(-0.2, 0, 0);
-      group.add(halo);
     }
 
     if (tier >= 2) {
-      const extraWingL = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.08, 0.9), emissiveMat);
-      extraWingL.position.set(-0.9, 0.15, 0.85);
+      const extraWingL = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.1, 1.0), emissiveMat);
+      extraWingL.position.set(-0.95, 0.16, 0.95);
       group.add(extraWingL);
       const extraWingR = extraWingL.clone();
-      extraWingR.position.z = -0.85;
+      extraWingR.position.z = -0.95;
       group.add(extraWingR);
-    }
-    if (tier >= 3) {
-      const microL = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.36, 7), emissiveMat);
-      microL.rotation.z = -Math.PI / 2;
-      microL.position.set(-1.26, -0.2, 0.45);
-      group.add(microL);
-      const microR = microL.clone();
-      microR.position.z = -0.45;
-      group.add(microR);
     }
   }
 
   function createThruster(THREE, tier, emissiveColor) {
     const group = new THREE.Group();
     const core = new THREE.Mesh(
-      new THREE.ConeGeometry(0.2 + tier * 0.02, 0.45 + tier * 0.06, 10),
+      new THREE.ConeGeometry(0.24 + tier * 0.03, 0.6 + tier * 0.08, 12),
       new THREE.MeshStandardMaterial({
         color: 0xffffff,
         emissive: emissiveColor,
-        emissiveIntensity: 1.8 + tier * 0.6,
+        emissiveIntensity: 2.4 + tier * 0.5,
         transparent: true,
-        opacity: 0.85,
+        opacity: 0.9,
       })
     );
     core.rotation.z = Math.PI / 2;
     group.add(core);
+
+    const halo = new THREE.Mesh(
+      new THREE.RingGeometry(0.2, 0.42, 16),
+      new THREE.MeshBasicMaterial({
+        color: emissiveColor,
+        transparent: true,
+        opacity: 0.65,
+        side: THREE.DoubleSide,
+      })
+    );
+    halo.rotation.y = Math.PI / 2;
+    halo.position.x = -0.15;
+    group.add(halo);
+
     return group;
   }
 
@@ -180,7 +219,7 @@
     const silhouette = Boolean(opts.silhouette);
     const bodyColor = silhouette ? 0x171b2a : palette.body;
     const accentColor = silhouette ? 0x21273a : palette.accent;
-    const emissiveColor = silhouette ? 0x000000 : palette.accent;
+    const emissiveColor = silhouette ? 0x000000 : (palette.glow || palette.accent);
     const opacity = silhouette ? 0.82 : 1;
 
     const bodyMat = createMaterial(THREE, bodyColor, 0x000000, opacity);
@@ -190,11 +229,11 @@
     const ship = new THREE.Group();
     addBasicHullParts(THREE, ship, shipId, tier, bodyMat, accentMat, emissiveMat);
 
-    const thruster = createThruster(THREE, tier, emissiveColor || palette.accent);
-    thruster.position.set(-1.35, -0.02, 0);
+    const thruster = createThruster(THREE, tier, emissiveColor);
+    thruster.position.set(-1.25, 0, 0);
     ship.add(thruster);
     ship.userData.thruster = thruster;
-    ship.userData.tier = tier;
+
     return ship;
   }
 
@@ -236,13 +275,13 @@
     if (!hangar.renderer || !hangar.scene || !hangar.camera) return;
     hangar.frame = requestAnimationFrame(hangarAnimate);
     if (hangar.ship) {
-      hangar.ship.rotation.y += 0.01;
-      const bob = Math.sin(Date.now() * 0.002) * 0.04;
+      hangar.ship.rotation.y += 0.012;
+      const bob = Math.sin(Date.now() * 0.0022) * 0.05;
       hangar.ship.position.y = bob;
       if (hangar.ship.userData.thruster) {
         const th = hangar.ship.userData.thruster;
-        th.scale.x = 1 + Math.sin(Date.now() * 0.012) * 0.12;
-        th.scale.y = 1 + Math.sin(Date.now() * 0.011) * 0.08;
+        th.scale.x = 1 + Math.sin(Date.now() * 0.015) * 0.15;
+        th.scale.y = 1 + Math.sin(Date.now() * 0.012) * 0.1;
       }
     }
     hangar.renderer.render(hangar.scene, hangar.camera);
@@ -258,8 +297,8 @@
     }
     hangar.root = rootEl;
     hangar.scene = new THREE.Scene();
-    hangar.camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
-    hangar.camera.position.set(0.7, 1.25, 4.1);
+    hangar.camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100);
+    hangar.camera.position.set(1.2, 1.4, 4.2);
     hangar.camera.lookAt(0, 0, 0);
 
     hangar.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -267,41 +306,72 @@
     rootEl.innerHTML = "";
     rootEl.appendChild(hangar.renderer.domElement);
 
-    const ambient = new THREE.AmbientLight(0xffffff, 0.9);
+    const ambient = new THREE.AmbientLight(0xffffff, 1.1);
     hangar.scene.add(ambient);
-    const key = new THREE.DirectionalLight(0xffffff, 1.2);
-    key.position.set(3, 4, 3);
+    const key = new THREE.DirectionalLight(0x7dd3fc, 1.4);
+    key.position.set(4, 5, 4);
     hangar.scene.add(key);
-    const rim = new THREE.DirectionalLight(0x7dd3fc, 0.65);
-    rim.position.set(-3, 1, -4);
+    const rim = new THREE.DirectionalLight(0xa855f7, 0.9);
+    rim.position.set(-4, 2, -3);
     hangar.scene.add(rim);
 
+    // Glowing holographic hangar bay pad
     const floor = new THREE.Mesh(
-      new THREE.RingGeometry(1.2, 1.75, 38),
+      new THREE.RingGeometry(1.1, 1.85, 48),
       new THREE.MeshStandardMaterial({
-        color: 0x16203c,
-        emissive: 0x12254e,
-        emissiveIntensity: 0.8,
+        color: 0x0ea5e9,
+        emissive: 0x0284c7,
+        emissiveIntensity: 1.2,
         transparent: true,
-        opacity: 0.82,
+        opacity: 0.85,
+        side: THREE.DoubleSide,
       })
     );
     floor.rotation.x = -Math.PI / 2;
-    floor.position.y = -0.82;
+    floor.position.y = -0.85;
     hangar.scene.add(floor);
+
     hangar.ready = true;
     hangarResize();
     if (!hangar.frame) hangarAnimate();
     return true;
   }
 
-  function setHangarShip(shipId, tier, locked) {
+  async function setHangarShip(shipId, tier, locked) {
     if (!hangar.ready || !window.THREE) return;
     const THREE = window.THREE;
     if (hangar.ship) hangar.scene.remove(hangar.ship);
-    hangar.ship = createShipMesh(THREE, shipId, tier, { silhouette: locked });
-    hangar.ship.scale.setScalar(0.9);
+
+    const placeholder = createShipMesh(THREE, shipId, tier, { silhouette: locked });
+    placeholder.scale.setScalar(0.9);
+    hangar.ship = placeholder;
     hangar.scene.add(hangar.ship);
+
+    if (!locked) {
+      const gltf = await loadGLBModel(THREE, shipId, tier);
+      if (gltf && hangar.ship === placeholder) {
+        hangar.scene.remove(placeholder);
+        const group = new THREE.Group();
+        const cloned = gltf.clone(true);
+        const box = new THREE.Box3().setFromObject(cloned);
+        const size = new THREE.Vector3();
+        box.getSize(size);
+        const maxDim = Math.max(size.x, size.y, size.z) || 1;
+        cloned.scale.setScalar(2.4 / maxDim);
+        cloned.rotation.y = -Math.PI / 2;
+        group.add(cloned);
+
+        const palette = paletteMap[shipId] || paletteMap.scout;
+        const thruster = createThruster(THREE, tier, palette.glow || 0x38bdf8);
+        thruster.position.set(-1.3, 0, 0);
+        group.add(thruster);
+        group.userData.thruster = thruster;
+
+        group.scale.setScalar(0.9);
+        hangar.ship = group;
+        hangar.scene.add(hangar.ship);
+      }
+    }
   }
 
   async function ensureGame(rootEl, width, height) {
@@ -315,25 +385,25 @@
     }
     if (!game.renderer) {
       game.scene = new THREE.Scene();
-      game.camera = new THREE.OrthographicCamera(0, width, height, 0, -200, 200);
-      game.camera.position.set(0, 0, 20);
+      game.camera = new THREE.OrthographicCamera(0, width, height, 0, -300, 300);
+      game.camera.position.set(0, 0, 50);
       game.camera.lookAt(0, 0, 0);
       game.enemyMeshes.clear();
       game.droneMeshes.clear();
 
       game.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-      game.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.8));
+      game.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
       game.layer.innerHTML = "";
       game.layer.appendChild(game.renderer.domElement);
 
-      const ambient = new THREE.AmbientLight(0xffffff, 0.9);
+      const ambient = new THREE.AmbientLight(0xffffff, 1.2);
       game.scene.add(ambient);
-      const key = new THREE.DirectionalLight(0xffffff, 1.1);
-      key.position.set(3, 8, 4);
+      const key = new THREE.DirectionalLight(0xffffff, 1.3);
+      key.position.set(3, 8, 12);
       game.scene.add(key);
 
       game.shield = new THREE.Mesh(
-        new THREE.SphereGeometry(0.95, 18, 18),
+        new THREE.SphereGeometry(0.95, 20, 20),
         new THREE.MeshBasicMaterial({
           color: 0x40f3ff,
           transparent: true,
@@ -362,7 +432,7 @@
 
   function meshScaleForSize(size, fallback = 18) {
     const s = Math.max(8, Number(size || fallback));
-    return s * 0.58;
+    return s * 0.65;
   }
 
   function clearMeshMap(meshMap) {
@@ -435,7 +505,7 @@
       const scale = meshScaleForSize(e.size, 18);
       mesh.scale.setScalar(scale);
       if (mesh.userData && mesh.userData.thruster) {
-        const pulse = 1 + Math.sin(Date.now() * 0.02 + scale) * 0.1;
+        const pulse = 1 + Math.sin(Date.now() * 0.02 + scale) * 0.12;
         mesh.userData.thruster.scale.set(1, pulse, 1);
       }
     });
@@ -453,9 +523,8 @@
       const mesh = ensureDroneMesh(id);
       if (!mesh) return;
       mesh.position.set(Number(d.x || 0), Number(d.y || 0), 0);
-      mesh.rotation.y = Math.PI;
       mesh.rotation.z = Number(d.angle || 0);
-      mesh.scale.setScalar(7.4);
+      mesh.scale.setScalar(9.5);
     });
     game.droneMeshes.forEach((entry, id) => {
       if (droneSeen.has(id)) return;
@@ -464,12 +533,47 @@
     });
   }
 
-  function setGameShip(shipId, tier) {
+  async function setGameShip(shipId, tier) {
     if (!game.ready || !window.THREE) return;
+    const THREE = window.THREE;
     if (game.ship) game.scene.remove(game.ship);
-    game.ship = createShipMesh(window.THREE, shipId, tier, { silhouette: false });
-    game.ship.scale.setScalar(12);
+
+    const placeholder = createShipMesh(THREE, shipId, tier, { silhouette: false });
+    placeholder.scale.setScalar(12);
+    game.ship = placeholder;
     game.scene.add(game.ship);
+
+    const gltf = await loadGLBModel(THREE, shipId, tier);
+    if (gltf && game.ship === placeholder) {
+      game.scene.remove(placeholder);
+      const group = new THREE.Group();
+      const cloned = gltf.clone(true);
+      const box = new THREE.Box3().setFromObject(cloned);
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      const maxDim = Math.max(size.x, size.y, size.z) || 1;
+      cloned.scale.setScalar(2.4 / maxDim);
+      cloned.rotation.y = -Math.PI / 2;
+      group.add(cloned);
+
+      const palette = paletteMap[shipId] || paletteMap.scout;
+      const thruster = createThruster(THREE, tier, palette.glow || 0x38bdf8);
+      thruster.position.set(-1.4, 0, 0);
+      group.add(thruster);
+      group.userData.thruster = thruster;
+
+      group.scale.setScalar(12);
+      game.ship = group;
+      game.scene.add(game.ship);
+    }
+  }
+
+  function lerp(a, b, t) {
+    return a + (b - a) * t;
+  }
+
+  function clamp(v, min, max) {
+    return Math.max(min, Math.min(max, v));
   }
 
   function updateGamePlayer(data) {
@@ -479,40 +583,59 @@
     const shieldLevel = Math.max(0, Number(data.shieldLevel || 0));
     const weaponLevel = Math.max(0, Number(data.weaponLevel || 0));
     const shooting = Boolean(data.shooting);
-    const enginePulse = 1 + Math.sin(Date.now() * 0.02) * (0.08 + thrusterLevel * 0.01);
+    const enginePulse = 1 + Math.sin(Date.now() * 0.025) * (0.12 + thrusterLevel * 0.02);
+
+    const targetAngle = Number(data.angle || 0);
+    let diff = targetAngle - (game.ship.userData.prevAngle || targetAngle);
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    game.ship.userData.prevAngle = targetAngle;
+
+    // Real 3D banking / roll into turns
+    const rollTarget = clamp(-diff * 7.5, -0.62, 0.62);
+    game.ship.userData.roll = lerp(game.ship.userData.roll || 0, rollTarget, 0.2);
+
+    // Pitch based on movement speed
+    const vx = Number(data.vx || 0);
+    const vy = Number(data.vy || 0);
+    const speed = Math.hypot(vx, vy);
+    const pitchTarget = clamp((speed / 380) * 0.24, 0, 0.3);
+    game.ship.userData.pitch = lerp(game.ship.userData.pitch || 0, pitchTarget, 0.16);
 
     game.ship.position.set(data.x || 0, data.y || 0, 0);
-    game.ship.rotation.y = Math.PI;
-    game.ship.rotation.z = (data.angle || 0);
-    game.ship.scale.setScalar(11.2 + tier * 0.5);
+    game.ship.rotation.z = targetAngle;
+    game.ship.rotation.x = game.ship.userData.roll; // 3D BANKING ROLL!
+    game.ship.rotation.y = Math.PI - game.ship.userData.pitch; // 3D PITCH!
+    game.ship.scale.setScalar(11.8 + tier * 0.6);
+
     if (game.ship.userData.thruster) {
       game.ship.userData.thruster.scale.set(
-        1 + thrusterLevel * 0.02,
-        enginePulse,
-        1 + thrusterLevel * 0.02
+        1 + thrusterLevel * 0.03,
+        enginePulse * (speed > 30 ? 1.4 : 0.7),
+        1 + thrusterLevel * 0.03
       );
     }
 
     if (game.shield) {
       const shieldRatio = Math.max(0, Math.min(1, Number(data.shieldRatio || 0)));
       game.shield.position.copy(game.ship.position);
-      game.shield.scale.setScalar(15 + tier * 0.6);
-      game.shield.material.opacity = shieldRatio > 0.06 ? 0.1 + shieldRatio * 0.24 + shieldLevel * 0.005 : 0;
+      game.shield.scale.setScalar(16 + tier * 0.7);
+      game.shield.material.opacity = shieldRatio > 0.05 ? 0.12 + shieldRatio * 0.28 + shieldLevel * 0.005 : 0;
+      game.shield.rotation.z += 0.02;
     }
 
-    // Weapon upgrade: subtle muzzle flash while firing.
     if (shooting) {
       if (!game.ship.userData.flash) {
         const flash = new window.THREE.Mesh(
-          new window.THREE.SphereGeometry(0.15, 8, 8),
-          new window.THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9 })
+          new window.THREE.SphereGeometry(0.2, 8, 8),
+          new window.THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95 })
         );
-        flash.position.set(1.95, 0, 0);
+        flash.position.set(2.1, 0, 0);
         game.ship.add(flash);
         game.ship.userData.flash = flash;
       }
-      game.ship.userData.flash.scale.setScalar(1 + Math.sin(Date.now() * 0.05) * 0.5 + weaponLevel * 0.02);
-      game.ship.userData.flash.material.opacity = 0.7;
+      game.ship.userData.flash.scale.setScalar(1.2 + Math.sin(Date.now() * 0.06) * 0.6 + weaponLevel * 0.03);
+      game.ship.userData.flash.material.opacity = 0.85;
     } else if (game.ship.userData.flash) {
       game.ship.userData.flash.material.opacity = 0;
     }
@@ -527,7 +650,7 @@
     const step = () => {
       if (!hangar.ship) return;
       const t = Math.min(1, (performance.now() - t0) / 450);
-      const s = 0.4 + (1.05 - 0.4) * t;
+      const s = 0.4 + (1.1 - 0.4) * t;
       hangar.ship.scale.setScalar(s);
       if (t < 1) requestAnimationFrame(step);
     };
