@@ -66,7 +66,7 @@ const existingAdsConfig = typeof window.ADS_CONFIG === "object" && window.ADS_CO
 const rewardedUrl =
   typeof window.REWARDED_AD_URL === "string" && window.REWARDED_AD_URL.trim()
     ? window.REWARDED_AD_URL.trim()
-    : String(existingAdsConfig.rewardedUrl || existingAdsConfig.monetagDirectLinkUrl || "https://uplcm.com/4/12291578").trim();
+    : String(existingAdsConfig.rewardedUrl || existingAdsConfig.monetagDirectLinkUrl || "https://uplcm.com/4/10668106").trim();
 
 window.ADS_CONFIG = {
   provider: baseRewardedProvider,

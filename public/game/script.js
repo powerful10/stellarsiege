@@ -5707,7 +5707,7 @@ function triggerInGameRewardedAd(onReward, statusEl = null, btnEl = null, source
 
   const adUrl =
     (window.ADS_CONFIG && (window.ADS_CONFIG.rewardedUrl || window.ADS_CONFIG.monetagDirectLinkUrl)) ||
-    "https://uplcm.com/4/12291578";
+    "https://uplcm.com/4/10668106";
 
   try {
     window.open(adUrl, "_blank", "noopener,noreferrer");
@@ -8641,8 +8641,8 @@ function killEnemy(enemy) {
     if (enemy.type === "boss") {
       run.campaign.bossesKilled += 1;
     }
-  }
-  burst(enemy.x, enemy.y, enemy.color, enemy.type === "boss" ? 80 : 26, enemy.type === "boss" ? 1.4 : 1);
+  run.shake = Math.min(14, run.shake + (enemy.type === "boss" ? 10 : 2.4));
+  burst(enemy.x, enemy.y, enemy.color, enemy.type === "boss" ? 85 : 28, enemy.type === "boss" ? 1.5 : 1.1);
   if (enemy.modifiers && enemy.modifiers.includes("volatile")) {
     burst(enemy.x, enemy.y, "#ff8e72", 34, 1.25);
     const dist = Math.hypot(player.x - enemy.x, player.y - enemy.y);
@@ -9006,18 +9006,42 @@ function updatePlayer(dt) {
   const fireRateNow = Math.max(0.04, player.fireRate * (overdriveActive ? 0.64 : 1));
   const abilityDamageMult = overdriveActive ? 1.2 : 1;
 
-  const ax = (input.right ? 1 : 0) - (input.left ? 1 : 0);
-  const ay = (input.down ? 1 : 0) - (input.up ? 1 : 0);
-  const targetVx = ax * player.speed;
-  const targetVy = ay * player.speed;
-  player.vx += (targetVx - player.vx) * 9 * dt;
-  player.vy += (targetVy - player.vy) * 9 * dt;
+  const rawAx = (input.right ? 1 : 0) - (input.left ? 1 : 0);
+  const rawAy = (input.down ? 1 : 0) - (input.up ? 1 : 0);
+  const moveLen = Math.hypot(rawAx, rawAy);
+  const normAx = moveLen > 0 ? rawAx / moveLen : 0;
+  const normAy = moveLen > 0 ? rawAy / moveLen : 0;
+  const targetVx = normAx * player.speed;
+  const targetVy = normAy * player.speed;
+  // Snappy responsive thruster acceleration when keys pressed, smooth cosmic glide drift when releasing
+  const accelRate = moveLen > 0 ? 14 : 7;
+  player.vx += (targetVx - player.vx) * accelRate * dt;
+  player.vy += (targetVy - player.vy) * accelRate * dt;
 
   player.x += player.vx * dt;
   player.y += player.vy * dt;
   const bound = player.radius + PLAYER_BOUND_PAD;
   player.x = clamp(player.x, bound, WORLD.width - bound);
   player.y = clamp(player.y, bound, WORLD.height - bound);
+
+  // Thruster particle exhaust
+  if (player.alive && (moveLen > 0 || Math.hypot(player.vx, player.vy) > 25)) {
+    if (Math.random() < 0.65) {
+      const rearAngle = player.angle + Math.PI;
+      const spreadAngle = rearAngle + rand(-0.35, 0.35);
+      const thrustSpd = rand(60, 140);
+      entities.particles.push({
+        x: player.x + Math.cos(rearAngle) * 16 + rand(-2, 2),
+        y: player.y + Math.sin(rearAngle) * 16 + rand(-2, 2),
+        vx: Math.cos(spreadAngle) * thrustSpd - player.vx * 0.15,
+        vy: Math.sin(spreadAngle) * thrustSpd - player.vy * 0.15,
+        life: rand(0.12, 0.22),
+        maxLife: 0.22,
+        color: Math.random() > 0.4 ? "#38bdf8" : "#818cf8",
+        size: rand(2.2, 4),
+      });
+    }
+  }
 
   let stickyTarget = null;
   if (stickyLockEnabled()) {
@@ -9433,7 +9457,25 @@ function updateBullets(dt) {
           run.comboTimer = 1.2;
           spawnDamageText(e.x + rand(-5, 5), e.y - e.size, Math.round(finalDamage), b.kind === "crit" ? "#ffd980" : "#d9f7ff");
 
-          burst(b.x, b.y, e.color, 10);
+          run.shake = Math.min(8, run.shake + (b.kind === "crit" ? 1.0 : 0.35));
+          burst(b.x, b.y, e.color, b.kind === "crit" ? 16 : 10);
+          // Directional kinetic impact sparks
+          const hitAngle = Math.atan2(b.vy, b.vx);
+          for (let s = 0; s < (b.kind === "crit" ? 5 : 3); s++) {
+            const spd = rand(60, 180);
+            const a = hitAngle + Math.PI + rand(-0.7, 0.7);
+            entities.particles.push({
+              x: b.x,
+              y: b.y,
+              vx: Math.cos(a) * spd,
+              vy: Math.sin(a) * spd,
+              life: rand(0.08, 0.18),
+              maxLife: 0.18,
+              color: b.kind === "crit" ? "#fef08a" : "#67e8f9",
+              size: rand(1.5, 3.2),
+            });
+          }
+
           b.pierce -= 1;
           if (b.pierce < 0) b.life = 0;
 
@@ -10039,6 +10081,29 @@ function drawFancyPlayerShip() {
   ctx.save();
   ctx.translate(player.x, player.y);
   ctx.rotate(player.angle);
+
+  // Animated plasma thruster flame
+  const moving = Math.hypot(player.vx, player.vy) > 20;
+  const flamePulse = (Math.sin(run.time * 36) + 1.25) * (moving ? 1.5 : 0.6);
+  const flameLen = (9 + tier * 2.5) * flamePulse;
+
+  // Outer plasma plume
+  ctx.fillStyle = moving ? "rgba(56, 189, 248, 0.88)" : "rgba(56, 189, 248, 0.35)";
+  ctx.beginPath();
+  ctx.moveTo(-16, -5);
+  ctx.lineTo(-16 - flameLen, 0);
+  ctx.lineTo(-16, 5);
+  ctx.closePath();
+  ctx.fill();
+
+  // Core high-energy flame
+  ctx.fillStyle = moving ? "#ffffff" : "rgba(224, 242, 254, 0.6)";
+  ctx.beginPath();
+  ctx.moveTo(-16, -2.5);
+  ctx.lineTo(-16 - flameLen * 0.55, 0);
+  ctx.lineTo(-16, 2.5);
+  ctx.closePath();
+  ctx.fill();
 
   // Glow
   ctx.fillStyle = "rgba(64,243,255,0.16)";
